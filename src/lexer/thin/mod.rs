@@ -106,28 +106,8 @@ pub enum Base {
     Decimal,
 }
 
-#[derive(Debug)]
-pub struct Tokens<'src> {
-    cursor: Cursor<'src>,
-}
-
-impl Iterator for Tokens<'_> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor.is_eof() {
-            None
-        } else {
-            self.cursor.reset_len_consumed();
-            Some(self.cursor.advance_token())
-        }
-    }
-}
-
-pub fn tokenize(input: &str) -> Tokens<'_> {
-    Tokens {
-        cursor: Cursor::new(input),
-    }
+pub fn first_token(input: &str) -> Token {
+    Cursor::new(input).advance_token()
 }
 
 fn is_whitespace(ch: char) -> bool {
