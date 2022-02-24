@@ -2,7 +2,7 @@ use std::fmt;
 
 use chumsky::{
     error::Simple,
-    primitive::{choice, end, filter_map, just},
+    primitive::{choice, end, filter, filter_map, just},
     text::{ident, keyword, TextParser},
     Error, Parser,
 };
@@ -18,6 +18,8 @@ pub enum Token {
     Struct,
     Func,
     Ident(String),
+
+    Int(String),
 
     Comma,
     Colon,
@@ -35,17 +37,31 @@ impl fmt::Display for Token {
             Token::Struct => write!(f, "struct"),
             Token::Func => write!(f, "func"),
             Token::Ident(id) => write!(f, "ident({})", id),
+
+            Token::Int(int) => write!(f, "int({})", int),
+
             Token::Comma => write!(f, ","),
             Token::Colon => write!(f, ":"),
             Token::Semicolon => write!(f, ";"),
             Token::Lt => write!(f, "<"),
             Token::Gt => write!(f, ">"),
+
             Token::Open(Delimiter::Paren) => write!(f, "("),
             Token::Open(Delimiter::Brace) => write!(f, "{{"),
             Token::Close(Delimiter::Paren) => write!(f, ")"),
             Token::Close(Delimiter::Brace) => write!(f, "}}"),
         }
     }
+}
+
+#[derive(Debug)]
+pub enum Literal {
+    Int(i32),
+}
+
+#[derive(Debug)]
+pub enum Expr {
+    Literal(Literal),
 }
 
 #[derive(Debug)]
@@ -61,7 +77,25 @@ pub enum Stmt {
     },
 }
 
+#[derive(Debug)]
+pub enum Item {
+    Expr(Expr),
+    Stmt(Stmt),
+}
+
 pub fn lexer() -> impl chumsky::Parser<char, Vec<Token>, Error = Simple<char>> {
+    let kw = choice((
+        keyword("struct").to(Token::Struct),
+        keyword("func").to(Token::Func),
+    ));
+
+    let ident = ident().map(|id| Token::Ident(id));
+
+    let dec = filter(char::is_ascii_digit);
+    let dec_ = just('_').or_not().ignore_then(dec);
+    let dec_int = dec.chain(dec_.repeated());
+    let int = dec_int.collect().map(|int| Token::Int(int));
+
     let ctrl = choice((
         just(',').to(Token::Comma),
         just(':').to(Token::Colon),
@@ -77,14 +111,8 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<Token>, Error = Simple<char>> {
         just('}').to(Token::Close(Delimiter::Brace)),
     ));
 
-    let kw = choice((
-        keyword("struct").to(Token::Struct),
-        keyword("func").to(Token::Func),
-    ));
-
-    let ident = ident().map(|id| Token::Ident(id));
-
     kw.or(ident)
+        .or(int)
         .or(ctrl)
         .or(delim)
         .padded()
@@ -92,7 +120,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<Token>, Error = Simple<char>> {
         .then_ignore(end())
 }
 
-pub fn parser() -> impl chumsky::Parser<Token, Vec<Stmt>, Error = Simple<Token>> {
+pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>> {
     let ident = filter_map(|span, tok| {
         if let Token::Ident(id) = tok {
             Ok(id)
@@ -100,6 +128,20 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Stmt>, Error = Simple<Token>>
             Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
         }
     });
+
+    let int = filter_map(|span, tok| {
+        if let Token::Int(mut int) = tok {
+            int.remove_matches('_');
+            if let Ok(int) = int.parse() {
+                Ok(Literal::Int(int))
+            } else {
+                Err(Simple::custom(span, "invalid integer literal"))
+            }
+        } else {
+            Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
+        }
+    });
+    let lit = int;
 
     let field = ident.then_ignore(just(Token::Colon)).then(ident);
     let fields = field
@@ -141,5 +183,8 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Stmt>, Error = Simple<Token>>
         .then_ignore(block)
         .map(|(name, args)| Stmt::Func { name, args });
 
-    r#struct.or(func).repeated().then_ignore(end())
+    (r#struct.or(func).map(Item::Stmt))
+        .or(lit.map(Expr::Literal).map(Item::Expr))
+        .repeated()
+        .then_ignore(end())
 }
