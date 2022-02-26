@@ -20,6 +20,7 @@ pub enum Token {
     Ident(String),
 
     Int(String),
+    Str(String),
 
     Comma,
     Colon,
@@ -39,6 +40,7 @@ impl fmt::Display for Token {
             Token::Ident(id) => write!(f, "ident({})", id),
 
             Token::Int(int) => write!(f, "int({})", int),
+            Token::Str(str) => write!(f, "str({})", str),
 
             Token::Comma => write!(f, ","),
             Token::Colon => write!(f, ":"),
@@ -57,6 +59,7 @@ impl fmt::Display for Token {
 #[derive(Debug)]
 pub enum Literal {
     Int(i32),
+    Str(String),
 }
 
 #[derive(Debug)]
@@ -96,6 +99,12 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<Token>, Error = Simple<char>> {
     let dec_int = dec.chain(dec_.repeated());
     let int = dec_int.collect().map(|int| Token::Int(int));
 
+    let r#str = just('"')
+        .ignore_then(filter(|ch| *ch != '"').repeated())
+        .then_ignore(just('"'))
+        .collect()
+        .map(|str| Token::Str(str));
+
     let ctrl = choice((
         just(',').to(Token::Comma),
         just(':').to(Token::Colon),
@@ -113,6 +122,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<Token>, Error = Simple<char>> {
 
     kw.or(ident)
         .or(int)
+        .or(r#str)
         .or(ctrl)
         .or(delim)
         .padded()
@@ -141,7 +151,14 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>>
             Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
         }
     });
-    let lit = int;
+    let r#str = filter_map(|span, tok| {
+        if let Token::Str(r#str) = tok {
+            Ok(Literal::Str(r#str))
+        } else {
+            Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
+        }
+    });
+    let lit = int.or(r#str);
 
     let field = ident.then_ignore(just(Token::Colon)).then(ident);
     let fields = field
