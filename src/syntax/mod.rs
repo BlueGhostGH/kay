@@ -4,6 +4,7 @@ use chumsky::{
     Error, Parser,
 };
 
+mod span;
 mod token;
 
 use token::Delimiter;
