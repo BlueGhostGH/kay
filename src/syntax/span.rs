@@ -1,9 +1,15 @@
-use std::ops::Range;
+use std::{fmt, ops::Range};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Span {
     context: String,
     range: (usize, usize),
+}
+
+impl fmt::Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}..{})", self.range.0, self.range.1)
+    }
 }
 
 impl chumsky::Span for Span {
