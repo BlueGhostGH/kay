@@ -7,6 +7,8 @@ use chumsky::{
 mod span;
 mod token;
 
+pub use span::Span;
+
 use token::Delimiter;
 pub use token::{lexer, Token};
 
@@ -59,7 +61,7 @@ pub enum StmtKind {
     Expr(Expr),
 }
 
-pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>> {
+pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
     let ident = filter_map(|span, tok| {
         if let Token::Ident(id) = tok {
             Ok(id)

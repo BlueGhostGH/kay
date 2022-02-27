@@ -1,13 +1,13 @@
 use std::{env, fs};
 
-use chumsky::Parser;
+use chumsky::{Parser, Span, Stream};
 
 mod cli {
     use std::{error, fmt, io};
 
     use chumsky::error::Simple;
 
-    use betterc::Token;
+    use betterc::{Span, Token};
 
     #[derive(Debug)]
     pub enum Error {
@@ -15,8 +15,8 @@ mod cli {
         SourceContainsUnicode,
         Io(io::Error),
 
-        Lexer(Simple<char>),
-        Parser(Simple<Token>),
+        Lexer(Simple<char, Span>),
+        Parser(Simple<Token, Span>),
     }
 
     impl fmt::Display for Error {
@@ -47,14 +47,14 @@ mod cli {
         }
     }
 
-    impl From<Vec<Simple<char>>> for Error {
-        fn from(mut lexer_errs: Vec<Simple<char>>) -> Self {
+    impl From<Vec<Simple<char, Span>>> for Error {
+        fn from(mut lexer_errs: Vec<Simple<char, Span>>) -> Self {
             Error::Lexer(lexer_errs.remove(0))
         }
     }
 
-    impl From<Vec<Simple<Token>>> for Error {
-        fn from(mut parser_errs: Vec<Simple<Token>>) -> Self {
+    impl From<Vec<Simple<Token, Span>>> for Error {
+        fn from(mut parser_errs: Vec<Simple<Token, Span>>) -> Self {
             Error::Parser(parser_errs.remove(0))
         }
     }
@@ -67,10 +67,16 @@ fn try_main() -> Result<(), cli::Error> {
         return Err(cli::Error::SourceContainsUnicode);
     }
 
-    let tokens = betterc::lexer().parse(code)?;
+    let len = code.chars().count();
+    let span = |i| betterc::Span::new(code.clone(), i..i + 1);
+
+    let tokens = betterc::lexer().parse(Stream::from_iter(
+        span(len),
+        code.chars().enumerate().map(|(i, c)| (c, span(i))),
+    ))?;
     dbg!(&tokens);
 
-    let ast = betterc::parser().parse(tokens)?;
+    let ast = betterc::parser().parse(Stream::from_iter(span(len), tokens.into_iter()))?;
     dbg!(&ast);
 
     Ok(())
