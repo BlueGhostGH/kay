@@ -70,8 +70,15 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<Token>, Error = Simple<char>> {
     let dec_int = dec.chain(dec_.repeated());
     let int = dec_int.collect().map(|int| Token::Int(int));
 
+    let escape = just('\\').ignore_then(
+        just('\\')
+            .or(just('/'))
+            .or(just('"'))
+            .or(just('n').to('\n')),
+    );
+
     let r#str = just('"')
-        .ignore_then(filter(|ch| *ch != '"').repeated())
+        .ignore_then(filter(|ch| *ch != '\\' && *ch != '"').or(escape).repeated())
         .then_ignore(just('"'))
         .collect()
         .map(|str| Token::Str(str));
