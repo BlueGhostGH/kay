@@ -10,33 +10,52 @@ use token::Delimiter;
 pub use token::{lexer, Token};
 
 #[derive(Debug)]
-pub enum Literal {
+pub enum Lit {
     Int(i32),
     Str(String),
 }
 
 #[derive(Debug)]
-pub enum Expr {
-    Literal(Literal),
+pub struct Expr {
+    kind: ExprKind,
 }
 
 #[derive(Debug)]
-pub enum Stmt {
+pub enum ExprKind {
+    Lit(Lit),
+}
+
+#[derive(Debug)]
+pub enum ItemKind {
     Struct {
-        name: String,
         generics: Option<Vec<String>>,
         fields: Option<Vec<(String, String)>>,
     },
     Func {
-        name: String,
-        args: Vec<(String, String)>,
+        inputs: Vec<(String, String)>,
     },
 }
 
 #[derive(Debug)]
-pub enum Item {
+pub struct Block {
+    stmts: Vec<Stmt>,
+}
+
+#[derive(Debug)]
+pub struct Item {
+    ident: String,
+    kind: ItemKind,
+}
+
+#[derive(Debug)]
+pub struct Stmt {
+    kind: StmtKind,
+}
+
+#[derive(Debug)]
+pub enum StmtKind {
+    Item(Item),
     Expr(Expr),
-    Stmt(Stmt),
 }
 
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>> {
@@ -52,9 +71,12 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>>
         if let Token::Int(mut int) = tok {
             int.remove_matches('_');
             if let Ok(int) = int.parse() {
-                Ok(Literal::Int(int))
+                Ok(Lit::Int(int))
             } else {
-                Err(Simple::custom(span, "invalid integer literal"))
+                Err(Simple::custom(
+                    span as std::ops::Range<usize>,
+                    "invalid integer literal",
+                ))
             }
         } else {
             Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
@@ -62,12 +84,12 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>>
     });
     let r#str = filter_map(|span, tok| {
         if let Token::Str(r#str) = tok {
-            Ok(Literal::Str(r#str))
+            Ok(Lit::Str(r#str))
         } else {
             Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
         }
     });
-    let lit = int.or(r#str);
+    let lit = int.or(r#str).map(ExprKind::Lit).map(|kind| Expr { kind });
 
     let field = ident.then_ignore(just(Token::Colon)).then(ident);
     let fields = field
@@ -87,10 +109,9 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>>
         .ignore_then(ident)
         .then(generics)
         .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
-        .map(|((name, generics), fields)| Stmt::Struct {
-            name,
-            generics,
-            fields,
+        .map(|((name, generics), fields)| Item {
+            ident: name,
+            kind: ItemKind::Struct { generics, fields },
         });
 
     let arg = ident.then_ignore(just(Token::Colon)).then(ident);
@@ -107,10 +128,10 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token>>
         .ignore_then(ident)
         .then(args)
         .then_ignore(block)
-        .map(|(name, args)| Stmt::Func { name, args });
+        .map(|(name, args)| Item {
+            ident: name,
+            kind: ItemKind::Func { inputs: args },
+        });
 
-    (r#struct.or(func).map(Item::Stmt))
-        .or(lit.map(Expr::Literal).map(Item::Expr))
-        .repeated()
-        .then_ignore(end())
+    r#struct.or(func).repeated().then_ignore(end())
 }
