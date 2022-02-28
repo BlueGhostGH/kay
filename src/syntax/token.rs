@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
 use chumsky::{
     self,
@@ -17,6 +17,12 @@ pub enum Delimiter {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BinOp {
+    Add,
+    Sub,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     Struct,
     Func,
@@ -30,6 +36,8 @@ pub enum Token {
     Semicolon,
     Lt,
     Gt,
+
+    Binary(BinOp),
 
     Open(Delimiter),
     Close(Delimiter),
@@ -51,6 +59,9 @@ impl fmt::Display for Token {
             Token::Lt => write!(f, "<"),
             Token::Gt => write!(f, ">"),
 
+            Token::Binary(BinOp::Add) => f.write_char('+'),
+            Token::Binary(BinOp::Sub) => f.write_char('-'),
+
             Token::Open(Delimiter::Paren) => write!(f, "("),
             Token::Open(Delimiter::Brace) => write!(f, "{{"),
             Token::Close(Delimiter::Paren) => write!(f, ")"),
@@ -71,6 +82,11 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         just(';').to(Token::Semicolon),
         just('<').to(Token::Lt),
         just('>').to(Token::Gt),
+    ));
+
+    let op = choice((
+        just('+').to(Token::Binary(BinOp::Add)),
+        just('-').to(Token::Binary(BinOp::Sub)),
     ));
 
     let delim = choice((
@@ -99,7 +115,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         _ => Token::Ident(s),
     });
 
-    let token = choice((ctrl, delim, word, int, r#str))
+    let token = choice((ctrl, op, delim, word, int, r#str))
         .map_with_span(|token, span| (token, span))
         .padded();
 
