@@ -44,6 +44,7 @@ pub enum ItemKind {
     },
     Func {
         inputs: Vec<(String, String)>,
+        output: Option<String>,
         block: Box<Block>,
     },
 }
@@ -146,6 +147,8 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
             just(Token::Close(Delimiter::Paren)),
         );
 
+        let ret_ty = just(Token::RArrow).ignore_then(ident);
+
         let block = just(Token::Open(Delimiter::Brace))
             .ignore_then(
                 choice((item.map(StmtKind::Item), expr.map(StmtKind::Expr)))
@@ -158,11 +161,13 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
         let func = just(Token::Func)
             .ignore_then(ident)
             .then(args)
+            .then(ret_ty.or_not())
             .then(block)
-            .map(|((name, args), block)| Item {
+            .map(|(((name, args), ret_ty), block)| Item {
                 ident: name,
                 kind: ItemKind::Func {
                     inputs: args,
+                    output: ret_ty,
                     block: Box::new(block),
                 },
             });

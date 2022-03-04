@@ -37,6 +37,8 @@ pub enum Token {
     Lt,
     Gt,
 
+    RArrow,
+
     Binary(BinOp),
 
     Open(Delimiter),
@@ -58,6 +60,8 @@ impl fmt::Display for Token {
             Token::Semicolon => write!(f, ";"),
             Token::Lt => write!(f, "<"),
             Token::Gt => write!(f, ">"),
+
+            Token::RArrow => f.write_str("->"),
 
             Token::Binary(BinOp::Add) => f.write_char('+'),
             Token::Binary(BinOp::Sub) => f.write_char('-'),
@@ -82,6 +86,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         just(';').to(Token::Semicolon),
         just('<').to(Token::Lt),
         just('>').to(Token::Gt),
+        just("->").to(Token::RArrow),
     ));
 
     let op = choice((
