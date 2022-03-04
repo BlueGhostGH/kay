@@ -19,6 +19,12 @@ pub enum Lit {
     Str(String),
 }
 
+#[derive(Debug, Clone)]
+pub enum BinOp {
+    Add,
+    Sub,
+}
+
 #[derive(Debug)]
 pub struct Expr {
     kind: ExprKind,
@@ -26,6 +32,7 @@ pub struct Expr {
 
 #[derive(Debug)]
 pub enum ExprKind {
+    Binary(BinOp, Box<Expr>, Box<Expr>),
     Lit(Lit),
 }
 
@@ -86,7 +93,19 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
         });
         let lit = int.or(r#str).map(ExprKind::Lit).map(|kind| Expr { kind });
 
-        lit
+        let atom = lit;
+
+        let op = just(Token::Binary(token::BinOp::Add))
+            .to(BinOp::Add)
+            .or(just(Token::Binary(token::BinOp::Sub)).to(BinOp::Sub));
+        let sum = atom
+            .clone()
+            .then(op.then(atom).repeated())
+            .foldl(|a, (op, b)| Expr {
+                kind: ExprKind::Binary(op, Box::new(a), Box::new(b)),
+            });
+
+        sum
     };
 
     let item = recursive(|item| {
