@@ -1,6 +1,7 @@
 use chumsky::{
     error::Simple,
-    primitive::{end, filter_map, just},
+    primitive::{choice, end, filter_map, just},
+    recursive::recursive,
     Error, Parser,
 };
 
@@ -36,6 +37,7 @@ pub enum ItemKind {
     },
     Func {
         inputs: Vec<(String, String)>,
+        block: Box<Block>,
     },
 }
 
@@ -62,79 +64,92 @@ pub enum StmtKind {
 }
 
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
-    let ident = filter_map(|span, tok| {
-        if let Token::Ident(id) = tok {
-            Ok(id)
-        } else {
-            Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
-        }
-    });
-
-    let int = filter_map(|span, tok| {
-        if let Token::Int(mut int) = tok {
-            int.remove_matches('_');
-            if let Ok(int) = int.parse() {
-                Ok(Lit::Int(int))
+    let expr = {
+        let int = filter_map(|span, tok| {
+            if let Token::Int(mut int) = tok {
+                int.remove_matches('_');
+                if let Ok(int) = int.parse() {
+                    Ok(Lit::Int(int))
+                } else {
+                    Err(Simple::custom(span, "invalid integer literal"))
+                }
             } else {
-                Err(Simple::custom(
-                    span as std::ops::Range<usize>,
-                    "invalid integer literal",
-                ))
+                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
             }
-        } else {
-            Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
-        }
-    });
-    let r#str = filter_map(|span, tok| {
-        if let Token::Str(r#str) = tok {
-            Ok(Lit::Str(r#str))
-        } else {
-            Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
-        }
-    });
-    let lit = int.or(r#str).map(ExprKind::Lit).map(|kind| Expr { kind });
+        });
+        let r#str = filter_map(|span, tok| {
+            if let Token::Str(r#str) = tok {
+                Ok(Lit::Str(r#str))
+            } else {
+                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
+            }
+        });
+        let lit = int.or(r#str).map(ExprKind::Lit).map(|kind| Expr { kind });
 
-    let field = ident.then_ignore(just(Token::Colon)).then(ident);
-    let fields = field
-        .separated_by(just(Token::Comma))
-        .allow_trailing()
-        .delimited_by(
-            just(Token::Open(Delimiter::Brace)),
-            just(Token::Close(Delimiter::Brace)),
+        lit
+    };
+
+    let item = recursive(|item| {
+        let ident = filter_map(|span, tok| {
+            if let Token::Ident(id) = tok {
+                Ok(id)
+            } else {
+                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
+            }
+        });
+
+        let field = ident.then_ignore(just(Token::Colon)).then(ident);
+        let fields = field
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .delimited_by(
+                just(Token::Open(Delimiter::Brace)),
+                just(Token::Close(Delimiter::Brace)),
+            );
+
+        let generics = ident
+            .separated_by(just(Token::Comma))
+            .delimited_by(just(Token::Lt), just(Token::Gt))
+            .or_not();
+
+        let r#struct = just(Token::Struct)
+            .ignore_then(ident)
+            .then(generics)
+            .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
+            .map(|((name, generics), fields)| Item {
+                ident: name,
+                kind: ItemKind::Struct { generics, fields },
+            });
+
+        let arg = ident.then_ignore(just(Token::Colon)).then(ident);
+        let args = arg.separated_by(just(Token::Comma)).delimited_by(
+            just(Token::Open(Delimiter::Paren)),
+            just(Token::Close(Delimiter::Paren)),
         );
 
-    let generics = ident
-        .separated_by(just(Token::Comma))
-        .delimited_by(just(Token::Lt), just(Token::Gt))
-        .or_not();
+        let block = just(Token::Open(Delimiter::Brace))
+            .ignore_then(
+                choice((item.map(StmtKind::Item), expr.map(StmtKind::Expr)))
+                    .map(|kind| Stmt { kind })
+                    .repeated(),
+            )
+            .then_ignore(just(Token::Close(Delimiter::Brace)))
+            .map(|stmts| Block { stmts });
 
-    let r#struct = just(Token::Struct)
-        .ignore_then(ident)
-        .then(generics)
-        .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
-        .map(|((name, generics), fields)| Item {
-            ident: name,
-            kind: ItemKind::Struct { generics, fields },
-        });
+        let func = just(Token::Func)
+            .ignore_then(ident)
+            .then(args)
+            .then(block)
+            .map(|((name, args), block)| Item {
+                ident: name,
+                kind: ItemKind::Func {
+                    inputs: args,
+                    block: Box::new(block),
+                },
+            });
 
-    let arg = ident.then_ignore(just(Token::Colon)).then(ident);
-    let args = arg.separated_by(just(Token::Comma)).delimited_by(
-        just(Token::Open(Delimiter::Paren)),
-        just(Token::Close(Delimiter::Paren)),
-    );
+        r#struct.or(func)
+    });
 
-    let block = just(Token::Open(Delimiter::Brace))
-        .ignore_then(just(Token::Close(Delimiter::Brace)))
-        .ignored();
-
-    let func = just(Token::Func)
-        .ignore_then(ident)
-        .then(args)
-        .then_ignore(block)
-        .map(|(name, args)| Item {
-            ident: name,
-            kind: ItemKind::Func { inputs: args },
-        });
-
-    r#struct.or(func).repeated().then_ignore(end())
+    item.repeated().then_ignore(end())
 }
