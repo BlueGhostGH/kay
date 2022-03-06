@@ -34,6 +34,7 @@ pub struct Expr {
 pub enum ExprKind {
     Binary(BinOp, Box<Expr>, Box<Expr>),
     Lit(Lit),
+    Call(Box<Expr>, Vec<Box<Expr>>),
 }
 
 #[derive(Debug)]
@@ -72,7 +73,7 @@ pub enum StmtKind {
 }
 
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
-    let expr = {
+    let expr = recursive(|expr| {
         let int = filter_map(|span, tok| {
             if let Token::Int(mut int) = tok {
                 int.remove_matches('_');
@@ -94,20 +95,40 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
         });
         let lit = int.or(r#str).map(ExprKind::Lit).map(|kind| Expr { kind });
 
+        let expr_list = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .delimited_by(
+                just(Token::Open(Delimiter::Paren)),
+                just(Token::Close(Delimiter::Paren)),
+            )
+            .or_not();
+
         let atom = lit;
+
+        let call = atom.then(expr_list).map(|(f, args)| match args {
+            Some(args) => {
+                let args = args.into_iter().map(Box::new).collect();
+
+                Expr {
+                    kind: ExprKind::Call(Box::new(f), args),
+                }
+            }
+            None => f,
+        });
 
         let op = just(Token::Binary(token::BinOp::Add))
             .to(BinOp::Add)
             .or(just(Token::Binary(token::BinOp::Sub)).to(BinOp::Sub));
-        let sum = atom
+        let sum = call
             .clone()
-            .then(op.then(atom).repeated())
+            .then(op.then(call).repeated())
             .foldl(|a, (op, b)| Expr {
                 kind: ExprKind::Binary(op, Box::new(a), Box::new(b)),
             });
 
         sum
-    };
+    });
 
     let item = recursive(|item| {
         let ident = filter_map(|span, tok| {
