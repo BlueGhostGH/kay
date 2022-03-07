@@ -26,6 +26,16 @@ pub enum BinOp {
 }
 
 #[derive(Debug)]
+pub struct Path {
+    segments: Vec<PathSegment>,
+}
+
+#[derive(Debug)]
+pub struct PathSegment {
+    ident: String,
+}
+
+#[derive(Debug)]
 pub struct Expr {
     kind: ExprKind,
 }
@@ -35,6 +45,7 @@ pub enum ExprKind {
     Binary(BinOp, Box<Expr>, Box<Expr>),
     Lit(Lit),
     Call(Box<Expr>, Vec<Box<Expr>>),
+    Path(Path),
 }
 
 #[derive(Debug)]
@@ -74,6 +85,15 @@ pub enum StmtKind {
 
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
     let expr = recursive(|expr| {
+        let expr_list = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .delimited_by(
+                just(Token::Open(Delimiter::Paren)),
+                just(Token::Close(Delimiter::Paren)),
+            )
+            .or_not();
+
         let int = filter_map(|span, tok| {
             if let Token::Int(mut int) = tok {
                 int.remove_matches('_');
@@ -95,16 +115,24 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
         });
         let lit = int.or(r#str).map(ExprKind::Lit).map(|kind| Expr { kind });
 
-        let expr_list = expr
-            .clone()
-            .separated_by(just(Token::Comma))
-            .delimited_by(
-                just(Token::Open(Delimiter::Paren)),
-                just(Token::Close(Delimiter::Paren)),
-            )
-            .or_not();
+        let ident = filter_map(|span, tok| {
+            if let Token::Ident(id) = tok {
+                Ok(id)
+            } else {
+                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
+            }
+        });
+        let path = ident
+            .map(|seg| PathSegment { ident: seg })
+            .separated_by(just([Token::Colon, Token::Colon]))
+            .at_least(1)
+            .allow_leading()
+            .map(|segments| Path { segments })
+            .map(|path| Expr {
+                kind: ExprKind::Path(path),
+            });
 
-        let atom = lit;
+        let atom = lit.or(path);
 
         let call = atom.then(expr_list).map(|(f, args)| match args {
             Some(args) => {
