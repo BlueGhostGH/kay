@@ -48,28 +48,28 @@ pub enum Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Token::Struct => write!(f, "struct"),
-            Token::Func => write!(f, "func"),
+            Token::Struct => f.write_str("struct"),
+            Token::Func => f.write_str("func"),
             Token::Ident(id) => write!(f, "ident({})", id),
 
             Token::Int(int) => write!(f, "int({})", int),
             Token::Str(str) => write!(f, "str({})", str),
 
-            Token::Comma => write!(f, ","),
-            Token::Colon => write!(f, ":"),
-            Token::Semicolon => write!(f, ";"),
-            Token::Lt => write!(f, "<"),
-            Token::Gt => write!(f, ">"),
+            Token::Comma => f.write_char(','),
+            Token::Colon => f.write_char(':'),
+            Token::Semicolon => f.write_char(';'),
+            Token::Lt => f.write_char('<'),
+            Token::Gt => f.write_char('>'),
 
             Token::RArrow => f.write_str("->"),
 
             Token::Binary(BinOp::Add) => f.write_char('+'),
             Token::Binary(BinOp::Sub) => f.write_char('-'),
 
-            Token::Open(Delimiter::Paren) => write!(f, "("),
-            Token::Open(Delimiter::Brace) => write!(f, "{{"),
-            Token::Close(Delimiter::Paren) => write!(f, ")"),
-            Token::Close(Delimiter::Brace) => write!(f, "}}"),
+            Token::Open(Delimiter::Paren) => f.write_char('('),
+            Token::Open(Delimiter::Brace) => f.write_char('{'),
+            Token::Close(Delimiter::Paren) => f.write_char(')'),
+            Token::Close(Delimiter::Brace) => f.write_char('}'),
         }
     }
 }
