@@ -1,7 +1,4 @@
-use std::{
-    fmt::{self, Write},
-    str,
-};
+use std::fmt::{self, Write};
 
 use chumsky::{
     self,
