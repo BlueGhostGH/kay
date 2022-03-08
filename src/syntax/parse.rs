@@ -10,75 +10,59 @@ use chumsky::{
     Error, Parser,
 };
 
-#[derive(Debug)]
-pub enum Lit {
-    Int(i32),
-    Str(String),
+mod ast {
+    #[derive(Debug)]
+    pub enum Lit {
+        Int(i32),
+        Str(String),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum BinOp {
+        Add,
+        Sub,
+    }
+
+    #[derive(Debug)]
+    pub enum Expr {
+        Binary(BinOp, Box<Expr>, Box<Expr>),
+        Lit(Lit),
+        Call(Box<Expr>, Vec<Box<Expr>>),
+        Path(Vec<String>),
+    }
+
+    #[derive(Debug)]
+    pub enum ItemKind {
+        Struct {
+            generics: Option<Vec<String>>,
+            fields: Option<Vec<(String, String)>>,
+        },
+        Func {
+            inputs: Vec<(String, String)>,
+            output: Option<String>,
+            block: Box<Block>,
+        },
+    }
+
+    #[derive(Debug)]
+    pub struct Block {
+        pub stmts: Vec<Stmt>,
+    }
+
+    #[derive(Debug)]
+    pub struct Item {
+        pub ident: String,
+        pub kind: ItemKind,
+    }
+
+    #[derive(Debug)]
+    pub enum Stmt {
+        Item(Box<Item>),
+        Expr(Box<Expr>),
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum BinOp {
-    Add,
-    Sub,
-}
-
-#[derive(Debug)]
-pub struct Path {
-    segments: Vec<PathSegment>,
-}
-
-#[derive(Debug)]
-pub struct PathSegment {
-    ident: String,
-}
-
-#[derive(Debug)]
-pub struct Expr {
-    kind: ExprKind,
-}
-
-#[derive(Debug)]
-pub enum ExprKind {
-    Binary(BinOp, Box<Expr>, Box<Expr>),
-    Lit(Lit),
-    Call(Box<Expr>, Vec<Box<Expr>>),
-    Path(Path),
-}
-
-#[derive(Debug)]
-pub enum ItemKind {
-    Struct {
-        generics: Option<Vec<String>>,
-        fields: Option<Vec<(String, String)>>,
-    },
-    Func {
-        inputs: Vec<(String, String)>,
-        output: Option<String>,
-        block: Box<Block>,
-    },
-}
-
-#[derive(Debug)]
-pub struct Block {
-    stmts: Vec<Stmt>,
-}
-
-#[derive(Debug)]
-pub struct Item {
-    ident: String,
-    kind: ItemKind,
-}
-
-#[derive(Debug)]
-pub struct Stmt {
-    kind: StmtKind,
-}
-
-#[derive(Debug)]
-pub enum StmtKind {
-    Item(Item),
-    Expr(Expr),
-}
+use ast::*;
 
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
     let expr = recursive(|expr| {
@@ -110,7 +94,7 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
                 Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
             }
         });
-        let lit = int.or(r#str).map(ExprKind::Lit).map(|kind| Expr { kind });
+        let lit = int.or(r#str).map(Expr::Lit);
 
         let ident = filter_map(|span, tok| {
             if let Token::Ident(id) = tok {
@@ -120,14 +104,10 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
             }
         });
         let path = ident
-            .map(|seg| PathSegment { ident: seg })
             .separated_by(just([Token::Colon, Token::Colon]))
             .at_least(1)
             .allow_leading()
-            .map(|segments| Path { segments })
-            .map(|path| Expr {
-                kind: ExprKind::Path(path),
-            });
+            .map(Expr::Path);
 
         let atom = lit.or(path);
 
@@ -135,9 +115,7 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
             Some(args) => {
                 let args = args.into_iter().map(Box::new).collect();
 
-                Expr {
-                    kind: ExprKind::Call(Box::new(f), args),
-                }
+                Expr::Call(Box::new(f), args)
             }
             None => f,
         });
@@ -148,9 +126,7 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
         let sum = call
             .clone()
             .then(op.then(call).repeated())
-            .foldl(|a, (op, b)| Expr {
-                kind: ExprKind::Binary(op, Box::new(a), Box::new(b)),
-            });
+            .foldl(|a, (op, b)| Expr::Binary(op, Box::new(a), Box::new(b)));
 
         sum
     });
@@ -197,9 +173,11 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
 
         let block = just(Token::Open(Delimiter::Brace))
             .ignore_then(
-                choice((item.map(StmtKind::Item), expr.map(StmtKind::Expr)))
-                    .map(|kind| Stmt { kind })
-                    .repeated(),
+                choice((
+                    item.map(|item| Stmt::Item(Box::new(item))),
+                    expr.map(|expr| Stmt::Expr(Box::new(expr))),
+                ))
+                .repeated(),
             )
             .then_ignore(just(Token::Close(Delimiter::Brace)))
             .map(|stmts| Block { stmts });
