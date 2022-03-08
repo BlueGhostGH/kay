@@ -2,4 +2,8 @@
 
 mod syntax;
 
-pub use syntax::{lexer, parser, Span, Token};
+pub use syntax::{
+    parse::parser,
+    span::Span,
+    token::{lexer, Token},
+};
