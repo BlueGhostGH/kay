@@ -1,18 +1,20 @@
-pub use super::{
-    span::Span,
-    token::{self, lexer, Delimiter, Token},
-};
-
 use chumsky::{
     error::Simple,
     primitive::{choice, end, filter_map, just},
     recursive::recursive,
-    select, Error, Parser,
+    select, Error, Parser as ChumskyParser,
 };
 
-pub trait AstParser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;
+pub use super::{
+    node::SrcNode,
+    span::Span,
+    token::{self, lexer, Delimiter, Token},
+};
+
+pub trait Parser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;
 
 mod ast {
+    use super::super::node::SrcNode;
 
     #[derive(Debug)]
     pub enum Lit {
@@ -33,9 +35,9 @@ mod ast {
 
     #[derive(Debug)]
     pub enum Expr {
-        Binary(BinOp, Box<Expr>, Box<Expr>),
+        Binary(SrcNode<BinOp>, SrcNode<Self>, SrcNode<Self>),
         Lit(Lit),
-        Call(Box<Expr>, Vec<Box<Expr>>),
+        Call(SrcNode<Self>, Vec<SrcNode<Self>>),
         Path(Path),
     }
 
@@ -72,14 +74,14 @@ mod ast {
 
 use ast::*;
 
-pub fn lit_parser() -> impl AstParser<ast::Lit> {
+pub fn lit_parser() -> impl Parser<ast::Lit> {
     select! {
         Token::Int(int) => ast::Lit::Int(int),
         Token::Str(r#str) => ast::Lit::Str(r#str),
     }
 }
 
-pub fn path_parser() -> impl AstParser<ast::Path> {
+pub fn path_parser() -> impl Parser<ast::Path> {
     select! {
         Token::Ident(id) => id
     }
@@ -89,41 +91,60 @@ pub fn path_parser() -> impl AstParser<ast::Path> {
     .map(|segments| Path { segments })
 }
 
-pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
-    let expr = recursive(|expr| {
-        let expr_list = expr
+pub fn expr_parser() -> impl Parser<ast::Expr> {
+    recursive(|expr| {
+        let paren_expr_list = expr
             .clone()
+            .map_with_span(SrcNode::new)
             .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .map(Some)
             .delimited_by(
                 just(Token::Open(Delimiter::Paren)),
                 just(Token::Close(Delimiter::Paren)),
             )
-            .or_not();
+            .boxed();
 
         let lit = lit_parser().map(Expr::Lit);
         let path = path_parser().map(Expr::Path);
 
-        let atom = lit.or(path);
+        let atom = lit.or(path).map_with_span(SrcNode::new).boxed();
 
-        let call = atom.then(expr_list).map(|(f, args)| match args {
-            Some(args) => {
-                let args = args.into_iter().map(Box::new).collect();
+        let call = atom
+            .then(paren_expr_list.or_not())
+            .map_with_span(|(expr, args), span| match args {
+                Some(Some(args)) => {
+                    let span = args.iter().fold(expr.span(), |span, arg: &SrcNode<Expr>| {
+                        span.union(arg.span())
+                    });
 
-                Expr::Call(Box::new(f), args)
-            }
-            None => f,
-        });
+                    SrcNode::new(ast::Expr::Call(expr, args), span)
+                }
+                None => expr,
+
+                _ => unreachable!(),
+            })
+            .boxed();
 
         let op = just(Token::Binary(token::BinOp::Add))
             .to(BinOp::Add)
-            .or(just(Token::Binary(token::BinOp::Sub)).to(BinOp::Sub));
+            .or(just(Token::Binary(token::BinOp::Sub)).to(BinOp::Sub))
+            .map_with_span(SrcNode::new);
         let sum = call
             .clone()
             .then(op.then(call).repeated())
-            .foldl(|a, (op, b)| Expr::Binary(op, Box::new(a), Box::new(b)));
+            .foldl(|a, (op, b)| {
+                let span = a.span().union(b.span());
+                SrcNode::new(Expr::Binary(op, a, b), span)
+            })
+            .boxed();
 
-        sum
-    });
+        sum.map(SrcNode::into_inner)
+    })
+}
+
+pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
+    let expr = expr_parser();
 
     let item = recursive(|item| {
         let ident = filter_map(|span, tok| {
