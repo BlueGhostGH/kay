@@ -1,4 +1,7 @@
-use std::fmt::{self, Write};
+use std::{
+    fmt::{self, Write},
+    str,
+};
 
 use chumsky::{
     self,
@@ -28,7 +31,7 @@ pub enum Token {
     Func,
     Ident(String),
 
-    Int(String),
+    Int(u128),
     Str(String),
 
     Comma,
@@ -77,8 +80,16 @@ impl fmt::Display for Token {
 pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<char, Span>> {
     let dec = filter(char::is_ascii_digit);
     let dec_ = just('_').or_not().ignore_then(dec);
-    let dec_int = dec.chain(dec_.repeated());
-    let int = dec_int.collect().map(Token::Int);
+    let dec_int = dec
+        .chain(dec_.repeated())
+        .collect::<String>()
+        .try_map(|mut int, span| {
+            int.remove_matches('_');
+
+            int.parse::<u128>()
+                .map_err(|err| Simple::custom(span, format!("{}", err)))
+        });
+    let int = dec_int.map(Token::Int);
 
     let ctrl = choice((
         just(',').to(Token::Comma),

@@ -1,4 +1,4 @@
-#![feature(string_remove_matches)]
+#![feature(string_remove_matches, trait_alias)]
 
 mod syntax;
 

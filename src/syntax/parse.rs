@@ -7,13 +7,16 @@ use chumsky::{
     error::Simple,
     primitive::{choice, end, filter_map, just},
     recursive::recursive,
-    Error, Parser,
+    select, Error,
 };
 
+pub trait Parser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;
+
 mod ast {
+
     #[derive(Debug)]
     pub enum Lit {
-        Int(i32),
+        Int(u128),
         Str(String),
     }
 
@@ -64,6 +67,13 @@ mod ast {
 
 use ast::*;
 
+pub fn lit_parser() -> impl Parser<ast::Lit> {
+    select! {
+        Token::Int(int) => ast::Lit::Int(int),
+        Token::Str(r#str) => ast::Lit::Str(r#str),
+    }
+}
+
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
     let expr = recursive(|expr| {
         let expr_list = expr
@@ -75,26 +85,7 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
             )
             .or_not();
 
-        let int = filter_map(|span, tok| {
-            if let Token::Int(mut int) = tok {
-                int.remove_matches('_');
-                if let Ok(int) = int.parse() {
-                    Ok(Lit::Int(int))
-                } else {
-                    Err(Simple::custom(span, "invalid integer literal"))
-                }
-            } else {
-                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
-            }
-        });
-        let r#str = filter_map(|span, tok| {
-            if let Token::Str(r#str) = tok {
-                Ok(Lit::Str(r#str))
-            } else {
-                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
-            }
-        });
-        let lit = int.or(r#str).map(Expr::Lit);
+        let lit = lit_parser().map(Expr::Lit);
 
         let ident = filter_map(|span, tok| {
             if let Token::Ident(id) = tok {
