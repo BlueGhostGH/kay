@@ -7,10 +7,10 @@ use chumsky::{
     error::Simple,
     primitive::{choice, end, filter_map, just},
     recursive::recursive,
-    select, Error,
+    select, Error, Parser,
 };
 
-pub trait Parser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;
+pub trait AstParser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;
 
 mod ast {
 
@@ -27,11 +27,16 @@ mod ast {
     }
 
     #[derive(Debug)]
+    pub struct Path {
+        pub segments: Vec<String>,
+    }
+
+    #[derive(Debug)]
     pub enum Expr {
         Binary(BinOp, Box<Expr>, Box<Expr>),
         Lit(Lit),
         Call(Box<Expr>, Vec<Box<Expr>>),
-        Path(Vec<String>),
+        Path(Path),
     }
 
     #[derive(Debug)]
@@ -67,11 +72,21 @@ mod ast {
 
 use ast::*;
 
-pub fn lit_parser() -> impl Parser<ast::Lit> {
+pub fn lit_parser() -> impl AstParser<ast::Lit> {
     select! {
         Token::Int(int) => ast::Lit::Int(int),
         Token::Str(r#str) => ast::Lit::Str(r#str),
     }
+}
+
+pub fn path_parser() -> impl AstParser<ast::Path> {
+    select! {
+        Token::Ident(id) => id
+    }
+    .separated_by(just([Token::Colon, Token::Colon]))
+    .at_least(1)
+    .allow_leading()
+    .map(|segments| Path { segments })
 }
 
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
@@ -86,19 +101,7 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
             .or_not();
 
         let lit = lit_parser().map(Expr::Lit);
-
-        let ident = filter_map(|span, tok| {
-            if let Token::Ident(id) = tok {
-                Ok(id)
-            } else {
-                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
-            }
-        });
-        let path = ident
-            .separated_by(just([Token::Colon, Token::Colon]))
-            .at_least(1)
-            .allow_leading()
-            .map(Expr::Path);
+        let path = path_parser().map(Expr::Path);
 
         let atom = lit.or(path);
 
