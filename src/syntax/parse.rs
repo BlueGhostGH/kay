@@ -50,7 +50,7 @@ mod ast {
         Func {
             inputs: Vec<(String, String)>,
             output: Option<String>,
-            block: Box<Block>,
+            block: SrcNode<Block>,
         },
     }
 
@@ -62,13 +62,13 @@ mod ast {
     #[derive(Debug)]
     pub struct Item {
         pub ident: String,
-        pub kind: ItemKind,
+        pub kind: SrcNode<ItemKind>,
     }
 
     #[derive(Debug)]
     pub enum Stmt {
-        Item(Box<Item>),
-        Expr(Box<Expr>),
+        Item(SrcNode<Item>),
+        Expr(SrcNode<Expr>),
     }
 }
 
@@ -144,16 +144,25 @@ pub fn expr_parser() -> impl Parser<ast::Expr> {
 }
 
 pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, Span>> {
-    let expr = expr_parser();
-
     let item = recursive(|item| {
-        let ident = filter_map(|span, tok| {
-            if let Token::Ident(id) = tok {
-                Ok(id)
-            } else {
-                Err(Simple::expected_input_found(span, Vec::new(), Some(tok)))
-            }
-        });
+        let ident = select! {
+            Token::Ident(id) => id,
+        };
+
+        let stmt = choice((
+            item.map_with_span(|item, span| Stmt::Item(SrcNode::new(item, span))),
+            expr_parser().map_with_span(|expr, span| Stmt::Expr(SrcNode::new(expr, span))),
+        ))
+        .boxed();
+
+        let block = stmt
+            .repeated()
+            .delimited_by(
+                just(Token::Open(Delimiter::Brace)),
+                just(Token::Close(Delimiter::Brace)),
+            )
+            .map_with_span(|stmts, span| SrcNode::new(Block { stmts }, span))
+            .boxed();
 
         let field = ident.then_ignore(just(Token::Colon)).then(ident);
         let fields = field
@@ -173,9 +182,13 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
             .ignore_then(ident)
             .then(generics)
             .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
-            .map(|((name, generics), fields)| Item {
-                ident: name,
-                kind: ItemKind::Struct { generics, fields },
+            .map_with_span(|((name, generics), fields), span| {
+                let kind = ItemKind::Struct { generics, fields };
+
+                Item {
+                    ident: name,
+                    kind: SrcNode::new(kind, span),
+                }
             });
 
         let arg = ident.then_ignore(just(Token::Colon)).then(ident);
@@ -186,29 +199,22 @@ pub fn parser() -> impl chumsky::Parser<Token, Vec<Item>, Error = Simple<Token, 
 
         let ret_ty = just(Token::RArrow).ignore_then(ident);
 
-        let block = just(Token::Open(Delimiter::Brace))
-            .ignore_then(
-                choice((
-                    item.map(|item| Stmt::Item(Box::new(item))),
-                    expr.map(|expr| Stmt::Expr(Box::new(expr))),
-                ))
-                .repeated(),
-            )
-            .then_ignore(just(Token::Close(Delimiter::Brace)))
-            .map(|stmts| Block { stmts });
-
         let func = just(Token::Func)
             .ignore_then(ident)
             .then(args)
             .then(ret_ty.or_not())
             .then(block)
-            .map(|(((name, args), ret_ty), block)| Item {
-                ident: name,
-                kind: ItemKind::Func {
+            .map_with_span(|(((name, args), ret_ty), block), span| {
+                let kind = ItemKind::Func {
                     inputs: args,
                     output: ret_ty,
-                    block: Box::new(block),
-                },
+                    block,
+                };
+
+                Item {
+                    ident: name,
+                    kind: SrcNode::new(kind, span),
+                }
             });
 
         r#struct.or(func)
