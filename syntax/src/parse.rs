@@ -76,13 +76,27 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
             })
             .boxed();
 
+        let op = just(Token::Binary(token::BinOp::Mul))
+            .to(ast::BinOp::Mul)
+            .or(just(Token::Binary(token::BinOp::Div)).to(ast::BinOp::Div))
+            .or(just(Token::Binary(token::BinOp::Rem)).to(ast::BinOp::Rem))
+            .map_with_span(SrcNode::new);
+        let product = call
+            .clone()
+            .then(op.then(call).repeated())
+            .foldl(|a, (op, b)| {
+                let span = a.span().union(b.span());
+                SrcNode::new(ast::Expr::Binary(op, a, b), span)
+            })
+            .boxed();
+
         let op = just(Token::Binary(token::BinOp::Add))
             .to(ast::BinOp::Add)
             .or(just(Token::Binary(token::BinOp::Sub)).to(ast::BinOp::Sub))
             .map_with_span(SrcNode::new);
-        let sum = call
+        let sum = product
             .clone()
-            .then(op.then(call).repeated())
+            .then(op.then(product).repeated())
             .foldl(|a, (op, b)| {
                 let span = a.span().union(b.span());
                 SrcNode::new(ast::Expr::Binary(op, a, b), span)

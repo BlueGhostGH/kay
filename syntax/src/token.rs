@@ -20,6 +20,10 @@ pub enum Delimiter {
 pub enum BinOp {
     Add,
     Sub,
+
+    Mul,
+    Div,
+    Rem,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -65,6 +69,9 @@ impl fmt::Display for Token {
 
             Token::Binary(BinOp::Add) => f.write_char('+'),
             Token::Binary(BinOp::Sub) => f.write_char('-'),
+            Token::Binary(BinOp::Mul) => f.write_char('*'),
+            Token::Binary(BinOp::Div) => f.write_char('/'),
+            Token::Binary(BinOp::Rem) => f.write_char('%'),
 
             Token::Open(Delimiter::Paren) => f.write_char('('),
             Token::Open(Delimiter::Brace) => f.write_char('{'),
@@ -100,6 +107,9 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
     let op = choice((
         just('+').to(Token::Binary(BinOp::Add)),
         just('-').to(Token::Binary(BinOp::Sub)),
+        just('*').to(Token::Binary(BinOp::Mul)),
+        just('/').to(Token::Binary(BinOp::Div)),
+        just('%').to(Token::Binary(BinOp::Rem)),
     ));
 
     let delim = choice((

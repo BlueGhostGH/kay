@@ -54,6 +54,10 @@ pub enum Lit {
 pub enum BinOp {
     Add,
     Sub,
+
+    Mul,
+    Div,
+    Rem,
 }
 
 #[derive(Debug)]
