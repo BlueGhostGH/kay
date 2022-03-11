@@ -1,9 +1,9 @@
 [package]
-name = "betterc"
+name = "kaytlin"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-betterc_syntax = { path = "../syntax" }
+kaytlin_syntax = { path = "../syntax" }
 
 chumsky = "0.8.0"
