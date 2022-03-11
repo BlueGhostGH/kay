@@ -62,7 +62,7 @@ pub enum BinOp {
 
 #[derive(Debug)]
 pub struct Path {
-    pub segments: Vec<Ident>,
+    pub segments: Vec<SrcNode<Ident>>,
 }
 
 #[derive(Debug)]
@@ -76,12 +76,12 @@ pub enum Expr {
 #[derive(Debug)]
 pub enum ItemKind {
     Struct {
-        generics: Option<Vec<Ident>>,
-        fields: Option<Vec<(Ident, Ident)>>,
+        generics: Option<Vec<SrcNode<Ident>>>,
+        fields: Option<Vec<(SrcNode<Ident>, SrcNode<Ident>)>>,
     },
     Func {
-        inputs: Vec<(Ident, Ident)>,
-        output: Option<Ident>,
+        inputs: Vec<(SrcNode<Ident>, SrcNode<Ident>)>,
+        output: Option<SrcNode<Ident>>,
         block: SrcNode<Block>,
     },
 }
@@ -93,7 +93,7 @@ pub struct Block {
 
 #[derive(Debug)]
 pub struct Item {
-    pub ident: Ident,
+    pub ident: SrcNode<Ident>,
     pub kind: SrcNode<ItemKind>,
 }
 

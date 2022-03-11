@@ -18,10 +18,11 @@ mod parse {
     pub trait Parser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;
 }
 
-pub fn ident_parser() -> impl parse::Parser<ast::Ident> {
+pub fn ident_parser() -> impl parse::Parser<SrcNode<ast::Ident>> {
     select! {
         Token::Ident(id) => id,
     }
+    .map_with_span(SrcNode::new)
 }
 
 pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
