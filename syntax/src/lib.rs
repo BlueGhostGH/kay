@@ -1,5 +1,6 @@
 #![feature(string_remove_matches, trait_alias)]
 
+mod ast;
 mod node;
 mod parse;
 mod span;
