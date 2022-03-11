@@ -1,14 +1,14 @@
 use chumsky::{
     error::Simple,
-    primitive::{choice, end, filter_map, just},
+    primitive::{choice, end, just},
     recursive::recursive,
-    select, Error, Parser as ChumskyParser,
+    select, Parser as ChumskyParser,
 };
 
-pub use super::{
+use crate::{
     node::SrcNode,
     span::Span,
-    token::{self, lexer, Delimiter, Token},
+    token::{self, Delimiter, Token},
 };
 
 pub trait Parser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;

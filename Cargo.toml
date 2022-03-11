@@ -1,7 +1,8 @@
-[package]
-name = "betterc"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "compiler",
+    "syntax",
+]
 
-[dependencies]
-chumsky = "0.8.0"
+[profile.dev]
+opt-level = 1

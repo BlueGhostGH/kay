@@ -15,6 +15,14 @@ dependencies = [
 name = "betterc"
 version = "0.1.0"
 dependencies = [
+ "betterc_syntax",
+ "chumsky",
+]
+
+[[package]]
+name = "betterc_syntax"
+version = "0.1.0"
+dependencies = [
  "chumsky",
 ]
 

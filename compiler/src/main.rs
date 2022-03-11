@@ -7,7 +7,7 @@ mod cli {
 
     use chumsky::error::Simple;
 
-    use betterc::{Span, Token};
+    use betterc_syntax::{Span, Token};
 
     #[derive(Debug)]
     pub enum Error {
@@ -68,15 +68,15 @@ fn try_main() -> Result<(), cli::Error> {
     }
 
     let len = code.chars().count();
-    let span = |i| betterc::Span::new(code.clone(), i..i + 1);
+    let span = |i| betterc_syntax::Span::new(code.clone(), i..i + 1);
 
-    let tokens = betterc::lexer().parse(Stream::from_iter(
+    let tokens = betterc_syntax::lexer().parse(Stream::from_iter(
         span(len),
         code.chars().enumerate().map(|(i, c)| (c, span(i))),
     ))?;
     dbg!(&tokens);
 
-    let ast = betterc::parser().parse(Stream::from_iter(span(len), tokens.into_iter()))?;
+    let ast = betterc_syntax::parser().parse(Stream::from_iter(span(len), tokens.into_iter()))?;
     dbg!(&ast);
 
     Ok(())

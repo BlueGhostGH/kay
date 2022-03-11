@@ -1,7 +1,5 @@
 use std::{cmp, fmt, ops::Range};
 
-use chumsky::Span as ChumskySpan;
-
 #[derive(Clone)]
 pub struct Span {
     context: String,
@@ -10,6 +8,8 @@ pub struct Span {
 
 impl Span {
     pub fn union(self, other: Self) -> Self {
+        use chumsky::Span;
+
         Self {
             range: (
                 cmp::min(self.start(), other.start()),

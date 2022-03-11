@@ -1,6 +1,6 @@
 use std::{fmt, ops};
 
-use crate::syntax::span::Span;
+use crate::span::Span;
 
 pub struct Node<T, M> {
     inner: Box<T>,

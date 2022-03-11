@@ -1,8 +1,11 @@
 #![feature(string_remove_matches, trait_alias)]
 
-mod syntax;
+mod node;
+mod parse;
+mod span;
+mod token;
 
-pub use syntax::{
+pub use crate::{
     parse::parser,
     span::Span,
     token::{lexer, Token},

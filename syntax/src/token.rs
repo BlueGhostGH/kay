@@ -8,7 +8,7 @@ use chumsky::{
     Parser,
 };
 
-use super::span::Span;
+use crate::span::Span;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Delimiter {
