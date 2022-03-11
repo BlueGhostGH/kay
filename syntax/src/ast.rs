@@ -6,7 +6,7 @@ use crate::node::SrcNode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ident {
-    inner: Intern<String>,
+    pub inner: Intern<String>,
 }
 
 impl fmt::Debug for Ident {
@@ -74,21 +74,27 @@ pub enum Expr {
 }
 
 #[derive(Debug)]
-pub enum ItemKind {
-    Struct {
-        generics: Option<Vec<SrcNode<Ident>>>,
-        fields: Option<Vec<(SrcNode<Ident>, SrcNode<Ident>)>>,
-    },
-    Func {
-        inputs: Vec<(SrcNode<Ident>, SrcNode<Ident>)>,
-        output: Option<SrcNode<Ident>>,
-        block: SrcNode<Block>,
-    },
+pub struct Generics {
+    pub params: Vec<SrcNode<Ident>>,
 }
 
 #[derive(Debug)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
+}
+
+#[derive(Debug)]
+pub enum ItemKind {
+    Struct {
+        generics: Option<SrcNode<Generics>>,
+        fields: Option<Vec<(SrcNode<Ident>, SrcNode<Ident>)>>,
+    },
+    Func {
+        generics: Option<SrcNode<Generics>>,
+        inputs: Vec<(SrcNode<Ident>, SrcNode<Ident>)>,
+        output: Option<SrcNode<Ident>>,
+        block: SrcNode<Block>,
+    },
 }
 
 #[derive(Debug)]

@@ -125,6 +125,13 @@ pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
             .map_with_span(|stmts, span| SrcNode::new(ast::Block { stmts }, span))
             .boxed();
 
+        let generics = ident_parser()
+            .separated_by(just(Token::Comma))
+            .delimited_by(just(Token::Lt), just(Token::Gt))
+            .map_with_span(|params, span| SrcNode::new(ast::Generics { params }, span))
+            .or_not()
+            .boxed();
+
         let field = ident_parser()
             .then_ignore(just(Token::Colon))
             .then(ident_parser());
@@ -136,14 +143,9 @@ pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
                 just(Token::Close(Delimiter::Brace)),
             );
 
-        let generics = ident_parser()
-            .separated_by(just(Token::Comma))
-            .delimited_by(just(Token::Lt), just(Token::Gt))
-            .or_not();
-
         let r#struct = just(Token::Struct)
             .ignore_then(ident_parser())
-            .then(generics)
+            .then(generics.clone())
             .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
             .map_with_span(|((name, generics), fields), span| {
                 let kind = ast::ItemKind::Struct { generics, fields };
@@ -166,11 +168,13 @@ pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
 
         let func = just(Token::Func)
             .ignore_then(ident_parser())
+            .then(generics.clone())
             .then(args)
             .then(ret_ty.or_not())
             .then(block)
-            .map_with_span(|(((name, args), ret_ty), block), span| {
+            .map_with_span(|((((name, generics), args), ret_ty), block), span| {
                 let kind = ast::ItemKind::Func {
+                    generics,
                     inputs: args,
                     output: ret_ty,
                     block,
