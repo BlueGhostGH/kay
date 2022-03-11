@@ -8,7 +8,7 @@ use chumsky::{
     Parser,
 };
 
-use crate::span::Span;
+use crate::{ast, span::Span};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Delimiter {
@@ -26,7 +26,7 @@ pub enum BinOp {
 pub enum Token {
     Struct,
     Func,
-    Ident(String),
+    Ident(ast::Ident),
 
     Int(u128),
     Str(String),
@@ -125,7 +125,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
     let word = ident().map(|s: String| match s.as_str() {
         "struct" => Token::Struct,
         "func" => Token::Func,
-        _ => Token::Ident(s),
+        _ => Token::Ident(ast::Ident::new(s)),
     });
 
     let token = choice((ctrl, op, delim, word, int, r#str))
