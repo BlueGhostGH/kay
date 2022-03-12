@@ -135,13 +135,10 @@ pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
         let field = ident_parser()
             .then_ignore(just(Token::Colon))
             .then(ident_parser());
-        let fields = field
-            .separated_by(just(Token::Comma))
-            .allow_trailing()
-            .delimited_by(
-                just(Token::Open(Delimiter::Brace)),
-                just(Token::Close(Delimiter::Brace)),
-            );
+        let fields = field.repeated().delimited_by(
+            just(Token::Open(Delimiter::Brace)),
+            just(Token::Close(Delimiter::Brace)),
+        );
 
         let r#struct = just(Token::Struct)
             .ignore_then(ident_parser())
