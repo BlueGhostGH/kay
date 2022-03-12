@@ -26,7 +26,7 @@ pub enum BinOp {
     Rem,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     Struct,
     Func,
@@ -49,7 +49,7 @@ pub enum Token {
     Close(Delimiter),
 }
 
-impl fmt::Display for Token {
+impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Token::Struct => f.write_str("struct"),
@@ -78,6 +78,12 @@ impl fmt::Display for Token {
             Token::Close(Delimiter::Paren) => f.write_char(')'),
             Token::Close(Delimiter::Brace) => f.write_char('}'),
         }
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

@@ -1,8 +1,10 @@
 use std::{cmp, fmt, ops::Range};
 
+use crate::src::SrcId;
+
 #[derive(Clone)]
 pub struct Span {
-    context: String,
+    context: SrcId,
     range: (usize, usize),
 }
 
@@ -27,10 +29,10 @@ impl fmt::Debug for Span {
 }
 
 impl chumsky::Span for Span {
-    type Context = String;
+    type Context = SrcId;
     type Offset = usize;
 
-    fn new(context: String, range: Range<usize>) -> Self {
+    fn new(context: SrcId, range: Range<usize>) -> Self {
         Self {
             context,
             range: (range.start, range.end),

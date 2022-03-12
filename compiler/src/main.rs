@@ -62,13 +62,14 @@ mod cli {
 
 fn try_main() -> Result<(), cli::Error> {
     let path = env::args().nth(1).ok_or(cli::Error::MissingSourcePath)?;
+    let src_id = kaytlin_syntax::SrcId::from_path(path.clone());
     let code = fs::read_to_string(path)?;
     if !code.is_ascii() {
         return Err(cli::Error::SourceContainsUnicode);
     }
 
     let len = code.chars().count();
-    let span = |i| kaytlin_syntax::Span::new(code.clone(), i..i + 1);
+    let span = |i| kaytlin_syntax::Span::new(src_id.clone(), i..i + 1);
 
     let tokens = kaytlin_syntax::lexer().parse(Stream::from_iter(
         span(len),
