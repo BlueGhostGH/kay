@@ -40,6 +40,19 @@ pub fn path_parser() -> impl parse::Parser<ast::Path> {
         .map(|segments| ast::Path { segments })
 }
 
+pub fn ty_parser() -> impl parse::Parser<SrcNode<ast::Ty>> {
+    recursive(|ty| {
+        let path = path_parser().map(ast::Ty::Path);
+
+        let ptr = just(Token::Binary(token::BinOp::Mul))
+            .ignore_then(ty)
+            .map_with_span(|ty, span| ast::Ty::Ptr(SrcNode::new(ty, span)));
+
+        path.or(ptr)
+    })
+    .map_with_span(SrcNode::new)
+}
+
 pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
     recursive(|expr| {
         let paren_expr_list = expr
@@ -134,11 +147,17 @@ pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
 
         let field = ident_parser()
             .then_ignore(just(Token::Colon))
-            .then(ident_parser());
-        let fields = field.repeated().delimited_by(
-            just(Token::Open(Delimiter::Brace)),
-            just(Token::Close(Delimiter::Brace)),
-        );
+            .then(ty_parser())
+            .map_with_span(|(ident, ty), span| SrcNode::new(ast::FieldDef { ident, ty }, span))
+            .boxed();
+        let fields = field
+            .repeated()
+            .delimited_by(
+                just(Token::Open(Delimiter::Brace)),
+                just(Token::Close(Delimiter::Brace)),
+            )
+            .map_with_span(SrcNode::new)
+            .boxed();
 
         let r#struct = just(Token::Struct)
             .ignore_then(ident_parser())
@@ -153,27 +172,39 @@ pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
                 }
             });
 
-        let arg = ident_parser()
+        let param = ident_parser()
             .then_ignore(just(Token::Colon))
-            .then(ident_parser());
-        let args = arg.separated_by(just(Token::Comma)).delimited_by(
-            just(Token::Open(Delimiter::Paren)),
-            just(Token::Close(Delimiter::Paren)),
-        );
+            .then(ty_parser())
+            .map_with_span(|(ident, ty), span| SrcNode::new(ast::Param { ident, ty }, span))
+            .boxed();
+        let params = param
+            .separated_by(just(Token::Comma))
+            .delimited_by(
+                just(Token::Open(Delimiter::Paren)),
+                just(Token::Close(Delimiter::Paren)),
+            )
+            .map_with_span(SrcNode::new)
+            .boxed();
 
-        let ret_ty = just(Token::RArrow).ignore_then(ident_parser());
+        let ret_ty = just(Token::RArrow)
+            .ignore_then(ty_parser())
+            .map(ast::FnRetTy::Ty)
+            .or(just(Token::Semicolon)
+                .map_with_span(|_, span| ast::FnRetTy::Default(SrcNode::new((), span))))
+            .map_with_span(SrcNode::new)
+            .boxed();
 
         let func = just(Token::Func)
             .ignore_then(ident_parser())
             .then(generics.clone())
-            .then(args)
-            .then(ret_ty.or_not())
+            .then(params)
+            .then(ret_ty)
             .then(block)
-            .map_with_span(|((((name, generics), args), ret_ty), block), span| {
+            .map_with_span(|((((name, generics), inputs), output), block), span| {
+                let sig = ast::FnSig { inputs, output };
                 let kind = ast::ItemKind::Func {
                     generics,
-                    inputs: args,
-                    output: ret_ty,
+                    sig,
                     block,
                 };
 

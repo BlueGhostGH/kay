@@ -60,7 +60,7 @@ pub enum BinOp {
     Rem,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Path {
     pub segments: Vec<SrcNode<Ident>>,
 }
@@ -73,6 +73,30 @@ pub enum Expr {
     Path(Path),
 }
 
+#[derive(Debug, Clone)]
+pub struct FieldDef {
+    pub ident: SrcNode<Ident>,
+    pub ty: SrcNode<Ty>,
+}
+
+#[derive(Debug)]
+pub struct Param {
+    pub ident: SrcNode<Ident>,
+    pub ty: SrcNode<Ty>,
+}
+
+#[derive(Debug)]
+pub enum FnRetTy {
+    Default(SrcNode<()>),
+    Ty(SrcNode<Ty>),
+}
+
+#[derive(Debug)]
+pub struct FnSig {
+    pub inputs: SrcNode<Vec<SrcNode<Param>>>,
+    pub output: SrcNode<FnRetTy>,
+}
+
 #[derive(Debug)]
 pub struct Generics {
     pub params: Vec<SrcNode<Ident>>,
@@ -83,16 +107,21 @@ pub struct Block {
     pub stmts: Vec<Stmt>,
 }
 
+#[derive(Debug, Clone)]
+pub enum Ty {
+    Path(Path),
+    Ptr(SrcNode<Self>),
+}
+
 #[derive(Debug)]
 pub enum ItemKind {
     Struct {
         generics: Option<SrcNode<Generics>>,
-        fields: Option<Vec<(SrcNode<Ident>, SrcNode<Ident>)>>,
+        fields: Option<SrcNode<Vec<SrcNode<FieldDef>>>>,
     },
     Func {
         generics: Option<SrcNode<Generics>>,
-        inputs: Vec<(SrcNode<Ident>, SrcNode<Ident>)>,
-        output: Option<SrcNode<Ident>>,
+        sig: FnSig,
         block: SrcNode<Block>,
     },
 }
