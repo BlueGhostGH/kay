@@ -68,9 +68,9 @@ pub struct Path {
 #[derive(Debug)]
 pub enum Expr {
     Binary(SrcNode<BinOp>, SrcNode<Self>, SrcNode<Self>),
-    Lit(Lit),
+    Lit(SrcNode<Lit>),
     Call(SrcNode<Self>, Vec<SrcNode<Self>>),
-    Path(Path),
+    Path(SrcNode<Path>),
 }
 
 #[derive(Debug, Clone)]
@@ -109,7 +109,7 @@ pub struct Block {
 
 #[derive(Debug, Clone)]
 pub enum Ty {
-    Path(Path),
+    Path(SrcNode<Path>),
     Ptr(SrcNode<Self>),
 }
 

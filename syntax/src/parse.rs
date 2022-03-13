@@ -13,12 +13,12 @@ use crate::{
 mod parse {
     use chumsky::error::Simple;
 
-    use crate::{span::Span, token::Token};
+    use crate::{node::SrcNode, span::Span, token::Token};
 
-    pub trait Parser<T> = chumsky::Parser<Token, T, Error = Simple<Token, Span>> + Clone;
+    pub trait Parser<T> = chumsky::Parser<Token, SrcNode<T>, Error = Simple<Token, Span>> + Clone;
 }
 
-pub fn ident_parser() -> impl parse::Parser<SrcNode<ast::Ident>> {
+pub fn ident_parser() -> impl parse::Parser<ast::Ident> {
     select! {
         Token::Ident(id) => id,
     }
@@ -30,6 +30,7 @@ pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
         Token::Int(int) => ast::Lit::Int(int),
         Token::Str(r#str) => ast::Lit::Str(r#str),
     }
+    .map_with_span(SrcNode::new)
 }
 
 pub fn path_parser() -> impl parse::Parser<ast::Path> {
@@ -38,9 +39,10 @@ pub fn path_parser() -> impl parse::Parser<ast::Path> {
         .at_least(1)
         .allow_leading()
         .map(|segments| ast::Path { segments })
+        .map_with_span(SrcNode::new)
 }
 
-pub fn ty_parser() -> impl parse::Parser<SrcNode<ast::Ty>> {
+pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
     recursive(|ty| {
         let path = path_parser().map(ast::Ty::Path);
 
@@ -119,13 +121,14 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
 
         sum.map(SrcNode::into_inner)
     })
+    .map_with_span(SrcNode::new)
 }
 
-pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
+pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
     let item = recursive(|item| {
         let stmt = choice((
             item.map_with_span(|item, span| ast::Stmt::Item(SrcNode::new(item, span))),
-            expr_parser().map_with_span(|expr, span| ast::Stmt::Expr(SrcNode::new(expr, span))),
+            expr_parser().map_with_span(|expr, span| ast::Stmt::Expr(expr)),
         ))
         .boxed();
 
@@ -215,7 +218,10 @@ pub fn parser() -> impl parse::Parser<Vec<ast::Item>> {
             });
 
         r#struct.or(func)
-    });
+    })
+    .map_with_span(SrcNode::new);
 
-    item.repeated().then_ignore(end())
+    item.repeated()
+        .then_ignore(end())
+        .map_with_span(SrcNode::new)
 }
