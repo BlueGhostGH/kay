@@ -59,10 +59,8 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
     recursive(|expr| {
         let paren_expr_list = expr
             .clone()
-            .map_with_span(SrcNode::new)
             .separated_by(just(Token::Comma))
             .allow_trailing()
-            .map(Some)
             .delimited_by(
                 just(Token::Open(Delimiter::Paren)),
                 just(Token::Close(Delimiter::Paren)),
@@ -77,7 +75,7 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
         let call = atom
             .then(paren_expr_list.or_not())
             .map(|(expr, args)| match args {
-                Some(Some(args)) => {
+                Some(args) => {
                     let span = args
                         .iter()
                         .fold(expr.span(), |span, arg: &SrcNode<ast::Expr>| {
@@ -87,8 +85,6 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
                     SrcNode::new(ast::Expr::Call(expr, args), span)
                 }
                 None => expr,
-
-                _ => unreachable!(),
             })
             .boxed();
 
@@ -119,16 +115,15 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
             })
             .boxed();
 
-        sum.map(SrcNode::into_inner)
+        sum
     })
-    .map_with_span(SrcNode::new)
 }
 
 pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
     let item = recursive(|item| {
         let stmt = choice((
             item.map_with_span(|item, span| ast::Stmt::Item(SrcNode::new(item, span))),
-            expr_parser().map_with_span(|expr, span| ast::Stmt::Expr(expr)),
+            expr_parser().map(ast::Stmt::Expr),
         ))
         .boxed();
 
