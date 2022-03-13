@@ -40,6 +40,7 @@ pub enum Token {
     Semicolon,
     Lt,
     Gt,
+    Eq,
 
     RArrow,
 
@@ -64,6 +65,7 @@ impl fmt::Debug for Token {
             Token::Semicolon => f.write_char(';'),
             Token::Lt => f.write_char('<'),
             Token::Gt => f.write_char('>'),
+            Token::Eq => f.write_char('='),
 
             Token::RArrow => f.write_str("->"),
 
@@ -107,6 +109,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         just(';').to(Token::Semicolon),
         just('<').to(Token::Lt),
         just('>').to(Token::Gt),
+        just('=').to(Token::Eq),
         just("->").to(Token::RArrow),
     ));
 

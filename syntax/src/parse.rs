@@ -121,10 +121,42 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
 
 pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
     let item = recursive(|item| {
+        let init = ident_parser()
+            .then_ignore(just(Token::Colon))
+            .then(ty_parser().or_not())
+            .then_ignore(just(Token::Eq))
+            .then(expr_parser())
+            .map_with_span(|((ident, ty), expr), span| {
+                let kind = ast::LocalKind::Init(expr, ty);
+
+                ast::Local {
+                    ident,
+                    kind: SrcNode::new(kind, span),
+                }
+            })
+            .boxed();
+        let decl = ident_parser()
+            .then_ignore(just(Token::Colon))
+            .then(ty_parser())
+            .map_with_span(|(ident, ty), span| {
+                let kind = ast::LocalKind::Decl(ty);
+
+                ast::Local {
+                    ident,
+                    kind: SrcNode::new(kind, span),
+                }
+            })
+            .boxed();
+
+        let local = init.or(decl).boxed();
+
         let stmt = choice((
             item.map_with_span(|item, span| ast::Stmt::Item(SrcNode::new(item, span))),
             expr_parser()
                 .map(ast::Stmt::Expr)
+                .then_ignore(just(Token::Semicolon)),
+            local
+                .map_with_span(|local, span| ast::Stmt::Local(SrcNode::new(local, span)))
                 .then_ignore(just(Token::Semicolon)),
         ))
         .boxed();
@@ -163,11 +195,11 @@ pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
             .ignore_then(ident_parser())
             .then(generics.clone())
             .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
-            .map_with_span(|((name, generics), fields), span| {
+            .map_with_span(|((ident, generics), fields), span| {
                 let kind = ast::ItemKind::Struct { generics, fields };
 
                 ast::Item {
-                    ident: name,
+                    ident,
                     kind: SrcNode::new(kind, span),
                 }
             });
@@ -200,7 +232,7 @@ pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
             .then(params)
             .then(ret_ty)
             .then(block)
-            .map_with_span(|((((name, generics), inputs), output), block), span| {
+            .map_with_span(|((((ident, generics), inputs), output), block), span| {
                 let sig = ast::FnSig { inputs, output };
                 let kind = ast::ItemKind::Func {
                     generics,
@@ -209,7 +241,7 @@ pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
                 };
 
                 ast::Item {
-                    ident: name,
+                    ident,
                     kind: SrcNode::new(kind, span),
                 }
             });

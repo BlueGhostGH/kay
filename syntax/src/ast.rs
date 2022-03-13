@@ -133,7 +133,20 @@ pub struct Item {
 }
 
 #[derive(Debug)]
+pub struct Local {
+    pub ident: SrcNode<Ident>,
+    pub kind: SrcNode<LocalKind>,
+}
+
+#[derive(Debug)]
+pub enum LocalKind {
+    Init(SrcNode<Expr>, Option<SrcNode<Ty>>),
+    Decl(SrcNode<Ty>),
+}
+
+#[derive(Debug)]
 pub enum Stmt {
     Item(SrcNode<Item>),
     Expr(SrcNode<Expr>),
+    Local(SrcNode<Local>),
 }
