@@ -123,7 +123,9 @@ pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
     let item = recursive(|item| {
         let stmt = choice((
             item.map_with_span(|item, span| ast::Stmt::Item(SrcNode::new(item, span))),
-            expr_parser().map(ast::Stmt::Expr),
+            expr_parser()
+                .map(ast::Stmt::Expr)
+                .then_ignore(just(Token::Semicolon)),
         ))
         .boxed();
 
