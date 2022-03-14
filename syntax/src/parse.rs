@@ -88,14 +88,20 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
             })
             .boxed();
 
+        let op = just(Token::And).map_with_span(SrcNode::new);
+        let addr = op.repeated().then(call).foldr(|op, expr| {
+            let span = op.span().union(expr.span());
+            SrcNode::new(ast::Expr::Addr(expr), span)
+        });
+
         let op = just(Token::Binary(token::BinOp::Mul))
             .to(ast::BinOp::Mul)
             .or(just(Token::Binary(token::BinOp::Div)).to(ast::BinOp::Div))
             .or(just(Token::Binary(token::BinOp::Rem)).to(ast::BinOp::Rem))
             .map_with_span(SrcNode::new);
-        let product = call
+        let product = addr
             .clone()
-            .then(op.then(call).repeated())
+            .then(op.then(addr).repeated())
             .foldl(|a, (op, b)| {
                 let span = a.span().union(b.span());
                 SrcNode::new(ast::Expr::Binary(op, a, b), span)
@@ -147,7 +153,6 @@ pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
                 }
             })
             .boxed();
-
         let local = init.or(decl).boxed();
 
         let stmt = choice((

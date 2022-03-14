@@ -45,6 +45,7 @@ pub enum Token {
     RArrow,
 
     Binary(BinOp),
+    And,
 
     Open(Delimiter),
     Close(Delimiter),
@@ -74,6 +75,7 @@ impl fmt::Debug for Token {
             Token::Binary(BinOp::Mul) => f.write_char('*'),
             Token::Binary(BinOp::Div) => f.write_char('/'),
             Token::Binary(BinOp::Rem) => f.write_char('%'),
+            Token::And => f.write_char('&'),
 
             Token::Open(Delimiter::Paren) => f.write_char('('),
             Token::Open(Delimiter::Brace) => f.write_char('{'),
@@ -119,6 +121,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         just('*').to(Token::Binary(BinOp::Mul)),
         just('/').to(Token::Binary(BinOp::Div)),
         just('%').to(Token::Binary(BinOp::Rem)),
+        just('&').to(Token::And),
     ));
 
     let delim = choice((

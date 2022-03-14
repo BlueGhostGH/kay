@@ -71,6 +71,7 @@ pub enum Expr {
     Lit(SrcNode<Lit>),
     Call(SrcNode<Self>, Vec<SrcNode<Self>>),
     Path(SrcNode<Path>),
+    Addr(SrcNode<Self>),
 }
 
 #[derive(Debug, Clone)]
