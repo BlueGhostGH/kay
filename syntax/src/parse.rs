@@ -7,7 +7,7 @@ use chumsky::{
 use crate::{
     ast,
     node::SrcNode,
-    token::{self, Delimiter, Token},
+    token::{Delimiter, Token},
 };
 
 mod parse {
@@ -46,7 +46,7 @@ pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
     recursive(|ty| {
         let path = path_parser().map(ast::Ty::Path);
 
-        let ptr = just(Token::Binary(token::BinOp::Mul))
+        let ptr = just(Token::Star)
             .ignore_then(ty)
             .map_with_span(|ty, span| ast::Ty::Ptr(SrcNode::new(ty, span)));
 
@@ -94,10 +94,10 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
             SrcNode::new(ast::Expr::Addr(expr), span)
         });
 
-        let op = just(Token::Binary(token::BinOp::Mul))
+        let op = just(Token::Star)
             .to(ast::BinOp::Mul)
-            .or(just(Token::Binary(token::BinOp::Div)).to(ast::BinOp::Div))
-            .or(just(Token::Binary(token::BinOp::Rem)).to(ast::BinOp::Rem))
+            .or(just(Token::Slash).to(ast::BinOp::Div))
+            .or(just(Token::Percent).to(ast::BinOp::Rem))
             .map_with_span(SrcNode::new);
         let product = addr
             .clone()
@@ -108,9 +108,9 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
             })
             .boxed();
 
-        let op = just(Token::Binary(token::BinOp::Add))
+        let op = just(Token::Plus)
             .to(ast::BinOp::Add)
-            .or(just(Token::Binary(token::BinOp::Sub)).to(ast::BinOp::Sub))
+            .or(just(Token::Minus).to(ast::BinOp::Sub))
             .map_with_span(SrcNode::new);
         let sum = product
             .clone()

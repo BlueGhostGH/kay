@@ -16,16 +16,6 @@ pub enum Delimiter {
     Brace,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum BinOp {
-    Add,
-    Sub,
-
-    Mul,
-    Div,
-    Rem,
-}
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     Struct,
@@ -41,10 +31,13 @@ pub enum Token {
     Lt,
     Gt,
     Eq,
-
     RArrow,
 
-    Binary(BinOp),
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
     And,
 
     Open(Delimiter),
@@ -67,14 +60,13 @@ impl fmt::Debug for Token {
             Token::Lt => f.write_char('<'),
             Token::Gt => f.write_char('>'),
             Token::Eq => f.write_char('='),
-
             Token::RArrow => f.write_str("->"),
 
-            Token::Binary(BinOp::Add) => f.write_char('+'),
-            Token::Binary(BinOp::Sub) => f.write_char('-'),
-            Token::Binary(BinOp::Mul) => f.write_char('*'),
-            Token::Binary(BinOp::Div) => f.write_char('/'),
-            Token::Binary(BinOp::Rem) => f.write_char('%'),
+            Token::Plus => f.write_char('+'),
+            Token::Minus => f.write_char('-'),
+            Token::Star => f.write_char('*'),
+            Token::Slash => f.write_char('/'),
+            Token::Percent => f.write_char('%'),
             Token::And => f.write_char('&'),
 
             Token::Open(Delimiter::Paren) => f.write_char('('),
@@ -92,6 +84,19 @@ impl fmt::Display for Token {
 }
 
 pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<char, Span>> {
+    let escape = just('\\').ignore_then(
+        just('\\')
+            .or(just('/'))
+            .or(just('"'))
+            .or(just('n').to('\n')),
+    );
+
+    let word = ident().map(|s: String| match s.as_str() {
+        "struct" => Token::Struct,
+        "func" => Token::Func,
+        _ => Token::Ident(ast::Ident::new(s)),
+    });
+
     let dec = filter(char::is_ascii_digit);
     let dec_ = just('_').or_not().ignore_then(dec);
     let dec_int = dec
@@ -105,6 +110,14 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         });
     let int = dec_int.map(Token::Int);
 
+    let r#str = just('"')
+        .ignore_then(filter(|ch| *ch != '\\' && *ch != '"').or(escape).repeated())
+        .then_ignore(just('"'))
+        .collect()
+        .map(Token::Str);
+
+    let lit = choice((int, r#str));
+
     let ctrl = choice((
         just(',').to(Token::Comma),
         just(':').to(Token::Colon),
@@ -116,11 +129,11 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
     ));
 
     let op = choice((
-        just('+').to(Token::Binary(BinOp::Add)),
-        just('-').to(Token::Binary(BinOp::Sub)),
-        just('*').to(Token::Binary(BinOp::Mul)),
-        just('/').to(Token::Binary(BinOp::Div)),
-        just('%').to(Token::Binary(BinOp::Rem)),
+        just('+').to(Token::Plus),
+        just('-').to(Token::Minus),
+        just('*').to(Token::Star),
+        just('/').to(Token::Slash),
+        just('%').to(Token::Percent),
         just('&').to(Token::And),
     ));
 
@@ -131,26 +144,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         just('}').to(Token::Close(Delimiter::Brace)),
     ));
 
-    let escape = just('\\').ignore_then(
-        just('\\')
-            .or(just('/'))
-            .or(just('"'))
-            .or(just('n').to('\n')),
-    );
-
-    let r#str = just('"')
-        .ignore_then(filter(|ch| *ch != '\\' && *ch != '"').or(escape).repeated())
-        .then_ignore(just('"'))
-        .collect()
-        .map(Token::Str);
-
-    let word = ident().map(|s: String| match s.as_str() {
-        "struct" => Token::Struct,
-        "func" => Token::Func,
-        _ => Token::Ident(ast::Ident::new(s)),
-    });
-
-    let token = choice((ctrl, op, delim, word, int, r#str))
+    let token = choice((word, lit, ctrl, op, delim))
         .map_with_span(|token, span| (token, span))
         .padded();
 
