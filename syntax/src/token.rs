@@ -52,7 +52,7 @@ impl fmt::Debug for Token {
             Token::Ident(id) => write!(f, "ident({})", id),
 
             Token::Int(int) => write!(f, "int({})", int),
-            Token::Str(str) => write!(f, "str({})", str),
+            Token::Str(str) => write!(f, "str(\"{}\")", str),
 
             Token::Comma => f.write_char(','),
             Token::Colon => f.write_char(':'),
@@ -148,4 +148,154 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         .padded();
 
     token.repeated().padded().then_ignore(end())
+}
+
+#[cfg(test)]
+mod tests {
+    use chumsky::{Parser, Span};
+
+    macro_rules! T {
+        [struct] => {
+            $crate::token::Token::Struct
+        };
+        [func] => {
+            $crate::token::Token::Func
+        };
+        [ident($id:ident)] => {{
+            let id = $crate::ast::Ident::new(stringify!($id));
+            $crate::token::Token::Ident(id)
+        }};
+
+        [int($int:literal)] => {
+            $crate::token::Token::Int($int)
+        };
+        [str($str:literal)] => {
+            $crate::token::Token::Str($str.into())
+        };
+
+        [,] => {
+            $crate::token::Token::Comma
+        };
+        [:] => {
+            $crate::token::Token::Colon
+        };
+        [;] => {
+            $crate::token::Token::Semicolon
+        };
+        [<] => {
+            $crate::token::Token::Lt
+        };
+        [>] => {
+            $crate::token::Token::Gt
+        };
+        [=] => {
+            $crate::token::Token::Eq
+        };
+        [->] => {
+            $crate::token::Token::RArrow
+        };
+
+        [+] => {
+            $crate::token::Token::Plus
+        };
+        [-] => {
+            $crate::token::Token::Minus
+        };
+        [*] => {
+            $crate::token::Token::Star
+        };
+        [/] => {
+            $crate::token::Token::Slash
+        };
+        [%] => {
+            $crate::token::Token::Percent
+        };
+        [&] => {
+            $crate::token::Token::And
+        };
+
+        [Open::Brace] => {
+            $crate::token::Token::Open($crate::token::Delimiter::Brace)
+        };
+        [Close::Brace] => {
+            $crate::token::Token::Close($crate::token::Delimiter::Brace)
+        };
+        [Open::Paren] => {
+            $crate::token::Token::Open($crate::token::Delimiter::Paren)
+        };
+        [Close::Paren] => {
+            $crate::token::Token::Close($crate::token::Delimiter::Paren)
+        };
+    }
+
+    macro_rules! expect_lex {
+        ($code:literal, [$($t:expr),*]) => {
+            let code = $code;
+            let len = code.chars().count();
+
+            let span = |i| $crate::span::Span::new($crate::src::SrcId::empty(), i..i + 1);
+            let tokens = $crate::token::lexer()
+                .parse(chumsky::Stream::from_iter(
+                    span(len),
+                    code.chars().enumerate().map(|(i, c)| (c, span(i))),
+                ))
+                .map(|tokens| tokens.into_iter().map(|(tok, _)| tok).collect::<Vec<_>>());
+
+            let expected_tokens = [$($t),*];
+
+            assert!(tokens.is_ok());
+            let tokens = tokens.unwrap();
+
+            assert!(tokens.len() == expected_tokens.len());
+
+            assert!(tokens.into_iter().zip(expected_tokens.into_iter()).all(|(t, et)| t == et));
+        };
+    }
+
+    #[test]
+    fn lits() {
+        expect_lex!(
+            "1 11 1_1 1_ 11_ \"hello\" \"\\\\ \\\"hello\\\" \\n\"",
+            [
+                T![int(1)],
+                T![int(11)],
+                T![int(11)],
+                T![int(1)],
+                T![int(11)],
+                T![str("hello")],
+                T![str("\\ \"hello\" \n")]
+            ]
+        );
+    }
+
+    #[test]
+    fn words() {
+        expect_lex!("struct func main", [T![struct], T![func], T![ident(main)]]);
+    }
+
+    #[test]
+    fn ctrls() {
+        expect_lex!(
+            ", : ; < > = ->",
+            [T![,], T![:], T![;], T![<], T![>], T![=], T![->]]
+        );
+    }
+
+    #[test]
+    fn ops() {
+        expect_lex!("+ - * / % &", [T![+], T![-], T![*], T![/], T![%], T![&]]);
+    }
+
+    #[test]
+    fn delims() {
+        expect_lex!(
+            "{ } ( )",
+            [
+                T![Open::Brace],
+                T![Close::Brace],
+                T![Open::Paren],
+                T![Close::Paren]
+            ]
+        );
+    }
 }

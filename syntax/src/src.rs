@@ -27,6 +27,13 @@ impl fmt::Display for SrcId {
 }
 
 impl SrcId {
+    #[cfg(test)]
+    pub fn empty() -> Self {
+        let inner = Intern::new(Vec::new());
+
+        Self { inner }
+    }
+
     pub fn from_path<P>(path: P) -> Self
     where
         P: AsRef<Path>,
