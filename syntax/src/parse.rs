@@ -95,13 +95,22 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
         });
 
         let op = just(Token::Star)
+            .to(ast::UnOp::Deref)
+            .or(just(Token::Minus).to(ast::UnOp::Neg))
+            .map_with_span(SrcNode::new);
+        let unary = op.repeated().then(addr).foldr(|op, expr| {
+            let span = op.span().union(expr.span());
+            SrcNode::new(ast::Expr::Unary(op, expr), span)
+        });
+
+        let op = just(Token::Star)
             .to(ast::BinOp::Mul)
             .or(just(Token::Slash).to(ast::BinOp::Div))
             .or(just(Token::Percent).to(ast::BinOp::Rem))
             .map_with_span(SrcNode::new);
-        let product = addr
+        let product = unary
             .clone()
-            .then(op.then(addr).repeated())
+            .then(op.then(unary).repeated())
             .foldl(|a, (op, b)| {
                 let span = a.span().union(b.span());
                 SrcNode::new(ast::Expr::Binary(op, a, b), span)

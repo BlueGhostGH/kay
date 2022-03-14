@@ -61,17 +61,24 @@ pub enum BinOp {
 }
 
 #[derive(Debug, Clone)]
+pub enum UnOp {
+    Deref,
+    Neg,
+}
+
+#[derive(Debug, Clone)]
 pub struct Path {
     pub segments: Vec<SrcNode<Ident>>,
 }
 
 #[derive(Debug)]
 pub enum Expr {
-    Binary(SrcNode<BinOp>, SrcNode<Self>, SrcNode<Self>),
     Lit(SrcNode<Lit>),
-    Call(SrcNode<Self>, Vec<SrcNode<Self>>),
     Path(SrcNode<Path>),
+    Call(SrcNode<Self>, Vec<SrcNode<Self>>),
     Addr(SrcNode<Self>),
+    Unary(SrcNode<UnOp>, SrcNode<Self>),
+    Binary(SrcNode<BinOp>, SrcNode<Self>, SrcNode<Self>),
 }
 
 #[derive(Debug, Clone)]
