@@ -84,21 +84,8 @@ impl fmt::Display for Token {
 }
 
 pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<char, Span>> {
-    let escape = just('\\').ignore_then(
-        just('\\')
-            .or(just('/'))
-            .or(just('"'))
-            .or(just('n').to('\n')),
-    );
-
-    let word = ident().map(|s: String| match s.as_str() {
-        "struct" => Token::Struct,
-        "func" => Token::Func,
-        _ => Token::Ident(ast::Ident::new(s)),
-    });
-
     let dec = filter(char::is_ascii_digit);
-    let dec_ = just('_').or_not().ignore_then(dec);
+    let dec_ = just('_').or(dec);
     let dec_int = dec
         .chain(dec_.repeated())
         .collect::<String>()
@@ -110,6 +97,12 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         });
     let int = dec_int.map(Token::Int);
 
+    let escape = just('\\').ignore_then(
+        just('\\')
+            .or(just('/'))
+            .or(just('"'))
+            .or(just('n').to('\n')),
+    );
     let r#str = just('"')
         .ignore_then(filter(|ch| *ch != '\\' && *ch != '"').or(escape).repeated())
         .then_ignore(just('"'))
@@ -117,6 +110,12 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         .map(Token::Str);
 
     let lit = choice((int, r#str));
+
+    let word = ident().map(|s: String| match s.as_str() {
+        "struct" => Token::Struct,
+        "func" => Token::Func,
+        _ => Token::Ident(ast::Ident::new(s)),
+    });
 
     let ctrl = choice((
         just(',').to(Token::Comma),
@@ -144,7 +143,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         just('}').to(Token::Close(Delimiter::Brace)),
     ));
 
-    let token = choice((word, lit, ctrl, op, delim))
+    let token = choice((lit, word, ctrl, op, delim))
         .map_with_span(|token, span| (token, span))
         .padded();
 
