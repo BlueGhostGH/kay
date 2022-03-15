@@ -158,3 +158,8 @@ pub enum Stmt {
     Expr(SrcNode<Expr>),
     Local(SrcNode<Local>),
 }
+
+#[derive(Debug)]
+pub struct Module {
+    pub items: Vec<SrcNode<Item>>,
+}

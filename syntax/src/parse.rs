@@ -134,8 +134,8 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
     })
 }
 
-pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
-    let item = recursive(|item| {
+pub fn item_parser() -> impl parse::Parser<ast::Item> {
+    recursive(|item| {
         let init = ident_parser()
             .then_ignore(just(Token::Colon))
             .then(ty_parser().or_not())
@@ -262,9 +262,12 @@ pub fn parser() -> impl parse::Parser<Vec<SrcNode<ast::Item>>> {
 
         r#struct.or(func)
     })
-    .map_with_span(SrcNode::new);
+    .map_with_span(SrcNode::new)
+}
 
-    item.repeated()
+pub fn module_parser() -> impl parse::Parser<ast::Module> {
+    item_parser()
+        .repeated()
         .then_ignore(end())
-        .map_with_span(SrcNode::new)
+        .map_with_span(|items, span| SrcNode::new(ast::Module { items }, span))
 }

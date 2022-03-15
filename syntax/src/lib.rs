@@ -8,7 +8,7 @@ mod src;
 mod token;
 
 pub use crate::{
-    parse::parser,
+    parse::module_parser,
     span::Span,
     src::SrcId,
     token::{lexer, Token},

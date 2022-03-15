@@ -77,7 +77,8 @@ fn try_main() -> Result<(), cli::Error> {
     ))?;
     dbg!(&tokens);
 
-    let ast = kaytlin_syntax::parser().parse(Stream::from_iter(span(len), tokens.into_iter()))?;
+    let ast =
+        kaytlin_syntax::module_parser().parse(Stream::from_iter(span(len), tokens.into_iter()))?;
     dbg!(&ast);
 
     Ok(())
