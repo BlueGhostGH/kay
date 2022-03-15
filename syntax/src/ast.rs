@@ -47,7 +47,7 @@ impl ops::Deref for Ident {
 #[derive(Debug)]
 pub enum Lit {
     Int(u128),
-    Str(String),
+    Str(Intern<String>),
 }
 
 #[derive(Debug, Clone)]

@@ -1,5 +1,7 @@
 use std::fmt::{self, Write};
 
+use internment::Intern;
+
 use chumsky::{
     self,
     error::Simple,
@@ -10,20 +12,20 @@ use chumsky::{
 
 use crate::{ast, span::Span};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Delimiter {
     Paren,
     Brace,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Token {
     Struct,
     Func,
     Ident(ast::Ident),
 
     Int(u128),
-    Str(String),
+    Str(Intern<String>),
 
     Comma,
     Colon,
@@ -107,7 +109,7 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
         .ignore_then(filter(|ch| *ch != '\\' && *ch != '"').or(escape).repeated())
         .then_ignore(just('"'))
         .collect()
-        .map(Token::Str);
+        .map(|str| Token::Str(Intern::new(str)));
 
     let lit = choice((int, r#str));
 
@@ -170,7 +172,7 @@ mod tests {
             $crate::token::Token::Int($int)
         };
         [str($str:literal)] => {
-            $crate::token::Token::Str($str.into())
+            $crate::token::Token::Str(internment::Intern::new($str.into()))
         };
 
         [,] => {
