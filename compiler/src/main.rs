@@ -74,11 +74,11 @@ fn try_main() -> Result<(), cli::Error> {
     let tokens = kaytlin_syntax::lexer().parse(Stream::from_iter(
         span(len),
         code.chars().enumerate().map(|(i, c)| (c, span(i))),
-    ))?;
+    ));
     dbg!(&tokens);
 
-    let ast =
-        kaytlin_syntax::module_parser().parse(Stream::from_iter(span(len), tokens.into_iter()))?;
+    let ast = kaytlin_syntax::module_parser()
+        .parse(Stream::from_iter(span(len), tokens.unwrap().into_iter()))?;
     dbg!(&ast);
 
     Ok(())

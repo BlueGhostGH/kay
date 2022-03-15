@@ -4,13 +4,14 @@ use internment::Intern;
 
 use chumsky::{
     self,
-    error::Simple,
-    primitive::{choice, end, filter, just},
+    error::Error,
+    primitive::{any, choice, end, filter, just},
+    recovery::skip_then_retry_until,
     text::{ident, TextParser},
     Parser,
 };
 
-use crate::{ast, span::Span};
+use crate::{ast, error, span::Span};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Delimiter {
@@ -44,6 +45,8 @@ pub enum Token {
 
     Open(Delimiter),
     Close(Delimiter),
+
+    Error(char),
 }
 
 impl fmt::Debug for Token {
@@ -75,6 +78,8 @@ impl fmt::Debug for Token {
             Token::Open(Delimiter::Brace) => f.write_char('{'),
             Token::Close(Delimiter::Paren) => f.write_char(')'),
             Token::Close(Delimiter::Brace) => f.write_char('}'),
+
+            Token::Error(ch) => write!(f, "err('{}')", ch),
         }
     }
 }
@@ -85,17 +90,19 @@ impl fmt::Display for Token {
     }
 }
 
-pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<char, Span>> {
+pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = error::Error> {
     let dec = filter(char::is_ascii_digit);
     let dec_ = just('_').or(dec);
     let dec_int = dec
         .chain(dec_.repeated())
         .collect::<String>()
-        .try_map(|mut int, span| {
+        .try_map(|mut int, _span| {
             int.remove_matches('_');
 
-            int.parse::<u128>()
-                .map_err(|err| Simple::custom(span, format!("{}", err)))
+            int.parse::<u128>().map_err(|_err| {
+                // Simple::custom(span, format!("{}", err))
+                todo!()
+            })
         });
     let int = dec_int.map(Token::Int);
 
@@ -146,8 +153,13 @@ pub fn lexer() -> impl chumsky::Parser<char, Vec<(Token, Span)>, Error = Simple<
     ));
 
     let token = choice((lit, word, ctrl, op, delim))
+        .or(any().map(Token::Error).validate(|t, span, emit| {
+            emit(error::Error::expected_input_found(span, None, Some(t)));
+            t
+        }))
         .map_with_span(|token, span| (token, span))
-        .padded();
+        .padded()
+        .recover_with(skip_then_retry_until([]));
 
     token.repeated().padded().then_ignore(end())
 }
@@ -228,6 +240,10 @@ mod tests {
         [Close::Paren] => {
             $crate::token::Token::Close($crate::token::Delimiter::Paren)
         };
+
+        [err($ch:literal)] => {
+            $crate::token::Token::Error($ch)
+        };
     }
 
     macro_rules! expect_lex {
@@ -245,6 +261,7 @@ mod tests {
 
             let expected_tokens = [$($t),*];
 
+            dbg!(&tokens);
             assert!(tokens.is_ok());
             let tokens = tokens.unwrap();
 
