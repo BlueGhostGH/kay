@@ -1,5 +1,6 @@
 use chumsky::{
     primitive::{choice, end, just},
+    recovery::nested_delimiters,
     recursive::recursive,
     select, Parser,
 };
@@ -8,6 +9,7 @@ use crate::{
     ast,
     error::{Error, Pattern},
     node::SrcNode,
+    span::Span,
     token::{Delimiter, Token},
 };
 
@@ -35,6 +37,30 @@ pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
     .map_err(|e: Error| e.expected(Pattern::Literal))
 }
 
+pub fn nested_parser<'a, T, P, F>(
+    parser: P,
+    delimiter: Delimiter,
+    f: F,
+) -> impl parse::Parser<T> + 'a
+where
+    T: 'a,
+    P: parse::Parser<T> + 'a,
+    F: Fn(Span) -> SrcNode<T> + Clone + 'a,
+{
+    parser
+        .delimited_by(just(Token::Open(delimiter)), just(Token::Close(delimiter)))
+        .recover_with(nested_delimiters(
+            Token::Open(delimiter),
+            Token::Close(delimiter),
+            [(
+                Token::Open(Delimiter::Paren),
+                Token::Close(Delimiter::Paren),
+            )],
+            f,
+        ))
+        .boxed()
+}
+
 pub fn path_parser() -> impl parse::Parser<ast::Path> {
     ident_parser()
         .separated_by(just([Token::Colon, Token::Colon]))
@@ -59,15 +85,17 @@ pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
 
 pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
     recursive(|expr| {
-        let paren_expr_list = expr
-            .clone()
-            .separated_by(just(Token::Comma))
-            .allow_trailing()
-            .delimited_by(
-                just(Token::Open(Delimiter::Paren)),
-                just(Token::Close(Delimiter::Paren)),
-            )
-            .boxed();
+        let paren_expr_list = nested_parser(
+            expr.clone()
+                .map_with_span(SrcNode::new)
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .map(Some)
+                .map_with_span(SrcNode::new),
+            Delimiter::Paren,
+            |span| SrcNode::new(None, span),
+        )
+        .map(SrcNode::into_inner);
 
         let lit = lit_parser().map(ast::Expr::Lit);
         let path = path_parser().map(ast::Expr::Path);
@@ -76,17 +104,16 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
 
         let call = atom
             .then(paren_expr_list.or_not())
-            .map(|(expr, args)| match args {
-                Some(args) => {
-                    let span = args
-                        .iter()
-                        .fold(expr.span(), |span, arg: &SrcNode<ast::Expr>| {
-                            span.union(arg.span())
-                        });
+            .map_with_span(|(expr, args), span| match args {
+                Some(Some(args)) => {
+                    let span = args.iter().fold(span, |span, arg: &SrcNode<ast::Expr>| {
+                        span.union(arg.span())
+                    });
 
                     SrcNode::new(ast::Expr::Call(expr, args), span)
                 }
                 None => expr,
+                _ => unimplemented!(),
             })
             .boxed();
 
@@ -132,8 +159,9 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
             })
             .boxed();
 
-        sum
+        sum.map(SrcNode::into_inner)
     })
+    .map_with_span(SrcNode::new)
 }
 
 pub fn item_parser() -> impl parse::Parser<ast::Item> {
