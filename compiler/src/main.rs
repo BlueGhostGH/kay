@@ -78,7 +78,7 @@ fn try_main() -> Result<(), cli::Error> {
     dbg!(&tokens);
 
     let ast = kaytlin_syntax::module_parser()
-        .parse(Stream::from_iter(span(len), tokens.unwrap().into_iter()))?;
+        .parse(Stream::from_iter(span(len), tokens.unwrap().into_iter()));
     dbg!(&ast);
 
     Ok(())

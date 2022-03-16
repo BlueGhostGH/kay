@@ -6,16 +6,16 @@ use chumsky::{
 
 use crate::{
     ast,
+    error::{Error, Pattern},
     node::SrcNode,
     token::{Delimiter, Token},
 };
 
 mod parse {
-    use chumsky::error::Simple;
 
-    use crate::{node::SrcNode, span::Span, token::Token};
+    use crate::{error, node::SrcNode, token::Token};
 
-    pub trait Parser<T> = chumsky::Parser<Token, SrcNode<T>, Error = Simple<Token, Span>> + Clone;
+    pub trait Parser<T> = chumsky::Parser<Token, SrcNode<T>, Error = error::Error> + Clone;
 }
 
 pub fn ident_parser() -> impl parse::Parser<ast::Ident> {
@@ -23,6 +23,7 @@ pub fn ident_parser() -> impl parse::Parser<ast::Ident> {
         Token::Ident(id) => id,
     }
     .map_with_span(SrcNode::new)
+    .map_err(|e: Error| e.expected(Pattern::Ident))
 }
 
 pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
@@ -31,6 +32,7 @@ pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
         Token::Str(r#str) => ast::Lit::Str(r#str),
     }
     .map_with_span(SrcNode::new)
+    .map_err(|e: Error| e.expected(Pattern::Literal))
 }
 
 pub fn path_parser() -> impl parse::Parser<ast::Path> {

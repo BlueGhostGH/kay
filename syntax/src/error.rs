@@ -19,6 +19,11 @@ pub struct Error {
 }
 
 impl Error {
+    pub fn expected(mut self, pat: Pattern) -> Self {
+        self.expected.insert(pat);
+        self
+    }
+
     fn merge(mut self, other: Self) -> Self {
         for expected in other.expected {
             self.expected.insert(expected);
@@ -67,6 +72,8 @@ impl<T: Into<Pattern>> chumsky::Error<T> for Error {
 pub enum Pattern {
     Char(char),
     Token(Token),
+    Literal,
+    Ident,
     End,
 }
 
