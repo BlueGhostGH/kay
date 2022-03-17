@@ -15,16 +15,15 @@ use crate::{
 
 mod parse {
 
-    use crate::{error, node::SrcNode, token::Token};
+    use crate::{error, token::Token};
 
-    pub trait Parser<T> = chumsky::Parser<Token, SrcNode<T>, Error = error::Error> + Clone;
+    pub trait Parser<T> = chumsky::Parser<Token, T, Error = error::Error> + Clone;
 }
 
 pub fn ident_parser() -> impl parse::Parser<ast::Ident> {
     select! {
         Token::Ident(id) => id,
     }
-    .map_with_span(SrcNode::new)
     .map_err(|e: Error| e.expected(Pattern::Ident))
 }
 
@@ -33,7 +32,6 @@ pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
         Token::Int(int) => ast::Lit::Int(int),
         Token::Str(r#str) => ast::Lit::Str(r#str),
     }
-    .map_with_span(SrcNode::new)
     .map_err(|e: Error| e.expected(Pattern::Literal))
 }
 
@@ -45,7 +43,7 @@ pub fn nested_parser<'a, T, P, F>(
 where
     T: 'a,
     P: parse::Parser<T> + 'a,
-    F: Fn(Span) -> SrcNode<T> + Clone + 'a,
+    F: Fn(Span) -> T + Clone + 'a,
 {
     parser
         .delimited_by(just(Token::Open(delimiter)), just(Token::Close(delimiter)))
@@ -63,16 +61,17 @@ where
 
 pub fn path_parser() -> impl parse::Parser<ast::Path> {
     ident_parser()
+        .map_with_span(SrcNode::new)
         .separated_by(just([Token::Colon, Token::Colon]))
         .at_least(1)
         .allow_leading()
         .map(|segments| ast::Path { segments })
-        .map_with_span(SrcNode::new)
 }
 
 pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
     recursive(|ty| {
-        let path = path_parser().map(ast::Ty::Path);
+        let path =
+            path_parser().map_with_span(|path, span| ast::Ty::Path(SrcNode::new(path, span)));
 
         let ptr = just(Token::Star)
             .ignore_then(ty)
@@ -80,7 +79,6 @@ pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
 
         path.or(ptr)
     })
-    .map_with_span(SrcNode::new)
 }
 
 pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
@@ -97,8 +95,9 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
         )
         .map(SrcNode::into_inner);
 
-        let lit = lit_parser().map(ast::Expr::Lit);
-        let path = path_parser().map(ast::Expr::Path);
+        let lit = lit_parser().map_with_span(|lit, span| ast::Expr::Lit(SrcNode::new(lit, span)));
+        let path =
+            path_parser().map_with_span(|path, span| ast::Expr::Path(SrcNode::new(path, span)));
 
         let atom = lit.or(path).map_with_span(SrcNode::new).boxed();
 
@@ -161,16 +160,16 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
 
         sum.map(SrcNode::into_inner)
     })
-    .map_with_span(SrcNode::new)
 }
 
 pub fn item_parser() -> impl parse::Parser<ast::Item> {
     recursive(|item| {
         let init = ident_parser()
+            .map_with_span(SrcNode::new)
             .then_ignore(just(Token::Colon))
-            .then(ty_parser().or_not())
+            .then(ty_parser().map_with_span(SrcNode::new).or_not())
             .then_ignore(just(Token::Eq))
-            .then(expr_parser())
+            .then(expr_parser().map_with_span(SrcNode::new))
             .map_with_span(|((ident, ty), expr), span| {
                 let kind = ast::LocalKind::Init(expr, ty);
 
@@ -181,8 +180,9 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
             })
             .boxed();
         let decl = ident_parser()
+            .map_with_span(SrcNode::new)
             .then_ignore(just(Token::Colon))
-            .then(ty_parser())
+            .then(ty_parser().map_with_span(SrcNode::new))
             .map_with_span(|(ident, ty), span| {
                 let kind = ast::LocalKind::Decl(ty);
 
@@ -197,6 +197,7 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
         let stmt = choice((
             item.map_with_span(|item, span| ast::Stmt::Item(SrcNode::new(item, span))),
             expr_parser()
+                .map_with_span(SrcNode::new)
                 .map(ast::Stmt::Expr)
                 .then_ignore(just(Token::Semicolon)),
             local
@@ -215,6 +216,7 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
             .boxed();
 
         let generics = ident_parser()
+            .map_with_span(SrcNode::new)
             .separated_by(just(Token::Comma))
             .delimited_by(just(Token::Lt), just(Token::Gt))
             .map_with_span(|params, span| SrcNode::new(ast::Generics { params }, span))
@@ -222,8 +224,9 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
             .boxed();
 
         let field = ident_parser()
+            .map_with_span(SrcNode::new)
             .then_ignore(just(Token::Colon))
-            .then(ty_parser())
+            .then(ty_parser().map_with_span(SrcNode::new))
             .map_with_span(|(ident, ty), span| SrcNode::new(ast::FieldDef { ident, ty }, span))
             .boxed();
         let fields = field
@@ -236,7 +239,7 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
             .boxed();
 
         let r#struct = just(Token::Struct)
-            .ignore_then(ident_parser())
+            .ignore_then(ident_parser().map_with_span(SrcNode::new))
             .then(generics.clone())
             .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
             .map_with_span(|((ident, generics), fields), span| {
@@ -249,8 +252,9 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
             });
 
         let param = ident_parser()
+            .map_with_span(SrcNode::new)
             .then_ignore(just(Token::Colon))
-            .then(ty_parser())
+            .then(ty_parser().map_with_span(SrcNode::new))
             .map_with_span(|(ident, ty), span| SrcNode::new(ast::Param { ident, ty }, span))
             .boxed();
         let params = param
@@ -263,7 +267,7 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
             .boxed();
 
         let ret_ty = just(Token::RArrow)
-            .ignore_then(ty_parser())
+            .ignore_then(ty_parser().map_with_span(SrcNode::new))
             .map(ast::FnRetTy::Ty)
             .or(just(Token::Semicolon)
                 .map_with_span(|_, span| ast::FnRetTy::Default(SrcNode::new((), span))))
@@ -271,7 +275,7 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
             .boxed();
 
         let func = just(Token::Func)
-            .ignore_then(ident_parser())
+            .ignore_then(ident_parser().map_with_span(SrcNode::new))
             .then(generics.clone())
             .then(params)
             .then(ret_ty)
@@ -292,12 +296,12 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
 
         r#struct.or(func)
     })
-    .map_with_span(SrcNode::new)
 }
 
 pub fn module_parser() -> impl parse::Parser<ast::Module> {
     item_parser()
+        .map_with_span(SrcNode::new)
         .repeated()
         .then_ignore(end())
-        .map_with_span(|items, span| SrcNode::new(ast::Module { items }, span))
+        .map(|items| ast::Module { items })
 }
