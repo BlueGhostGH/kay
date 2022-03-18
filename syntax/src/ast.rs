@@ -79,6 +79,7 @@ pub enum Expr {
     Addr(SrcNode<Self>),
     Unary(SrcNode<UnOp>, SrcNode<Self>),
     Binary(SrcNode<BinOp>, SrcNode<Self>, SrcNode<Self>),
+    Error,
 }
 
 #[derive(Debug, Clone)]

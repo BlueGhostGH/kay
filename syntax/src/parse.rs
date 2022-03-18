@@ -14,7 +14,6 @@ use crate::{
 };
 
 mod parse {
-
     use crate::{error, token::Token};
 
     pub trait Parser<T> = chumsky::Parser<Token, T, Error = error::Error> + Clone;
@@ -73,7 +72,7 @@ pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
         let path =
             path_parser().map_with_span(|path, span| ast::Ty::Path(SrcNode::new(path, span)));
 
-        let ptr = just(Token::Star)
+        let ptr = just::<_, _, Error>(Token::Star)
             .ignore_then(ty)
             .map_with_span(|ty, span| ast::Ty::Ptr(SrcNode::new(ty, span)));
 
@@ -88,18 +87,20 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
                 .map_with_span(SrcNode::new)
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
-                .map(Some)
-                .map_with_span(SrcNode::new),
+                .map(Some),
             Delimiter::Paren,
-            |span| SrcNode::new(None, span),
-        )
-        .map(SrcNode::into_inner);
+            |_| None,
+        );
 
         let lit = lit_parser().map_with_span(|lit, span| ast::Expr::Lit(SrcNode::new(lit, span)));
         let path =
             path_parser().map_with_span(|path, span| ast::Expr::Path(SrcNode::new(path, span)));
 
-        let atom = lit.or(path).map_with_span(SrcNode::new).boxed();
+        let atom = lit
+            .or(path)
+            .or(select! { Token::Error(_) => () }.map(|_| ast::Expr::Error))
+            .map_with_span(SrcNode::new)
+            .boxed();
 
         let call = atom
             .then(paren_expr_list.or_not())
@@ -111,8 +112,8 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
 
                     SrcNode::new(ast::Expr::Call(expr, args), span)
                 }
+                Some(None) => SrcNode::new(ast::Expr::Error, span),
                 None => expr,
-                _ => unimplemented!(),
             })
             .boxed();
 
