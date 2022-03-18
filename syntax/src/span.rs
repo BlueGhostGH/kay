@@ -2,7 +2,7 @@ use std::{cmp, fmt, ops::Range};
 
 use crate::src::SrcId;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Span {
     context: SrcId,
     range: (usize, usize),
