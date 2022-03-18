@@ -1,9 +1,9 @@
 [package]
-name = "kaytlin"
+name = "kay"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-kaytlin_syntax = { path = "../syntax" }
+kay_syntax = { path = "../syntax" }
 
 chumsky = "0.8.0"

@@ -102,15 +102,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaytlin"
+name = "kay"
 version = "0.1.0"
 dependencies = [
  "chumsky",
- "kaytlin_syntax",
+ "kay_syntax",
 ]
 
 [[package]]
-name = "kaytlin_syntax"
+name = "kay_syntax"
 version = "0.1.0"
 dependencies = [
  "chumsky",

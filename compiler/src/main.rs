@@ -1,6 +1,6 @@
 use std::{env, fs};
 
-use kaytlin_syntax::{parse_module, SrcId};
+use kay_syntax::{parse_module, SrcId};
 
 mod cli {
     use std::{error, fmt, io};
