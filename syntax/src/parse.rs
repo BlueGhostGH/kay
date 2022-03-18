@@ -13,7 +13,7 @@ use crate::{
     token::{Delimiter, Token},
 };
 
-mod parse {
+pub mod helper {
     use crate::{error, token::Token};
 
     pub trait Parser<T> = chumsky::Parser<Token, T, Error = error::Error> + Clone;
@@ -21,16 +21,16 @@ mod parse {
     pub type BoxedParser<'a, T> = chumsky::BoxedParser<'a, Token, T, error::Error>;
 }
 
-use parse::BoxedParser;
+use helper::BoxedParser;
 
-pub fn ident_parser() -> impl parse::Parser<ast::Ident> {
+pub fn ident_parser() -> impl helper::Parser<ast::Ident> {
     select! {
         Token::Ident(id) => id,
     }
     .map_err(|e: Error| e.expected(Pattern::Ident))
 }
 
-pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
+pub fn lit_parser() -> impl helper::Parser<ast::Lit> {
     select! {
         Token::Int(int) => ast::Lit::Int(int),
         Token::Str(r#str) => ast::Lit::Str(r#str),
@@ -41,7 +41,7 @@ pub fn lit_parser() -> impl parse::Parser<ast::Lit> {
 pub fn nested_parser<'a, T, P, F>(parser: P, delimiter: Delimiter, f: F) -> BoxedParser<'a, T>
 where
     T: 'a,
-    P: parse::Parser<T> + 'a,
+    P: helper::Parser<T> + 'a,
     F: Fn(Span) -> T + Clone + 'a,
 {
     parser
@@ -58,7 +58,7 @@ where
         .boxed()
 }
 
-pub fn path_parser() -> impl parse::Parser<ast::Path> {
+pub fn path_parser() -> impl helper::Parser<ast::Path> {
     ident_parser()
         .map_with_span(SrcNode::new)
         .separated_by(just([Token::Colon, Token::Colon]))
@@ -67,7 +67,7 @@ pub fn path_parser() -> impl parse::Parser<ast::Path> {
         .map(|segments| ast::Path { segments })
 }
 
-pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
+pub fn ty_parser() -> impl helper::Parser<ast::Ty> {
     recursive(|ty| {
         let path =
             path_parser().map_with_span(|path, span| ast::Ty::Path(SrcNode::new(path, span)));
@@ -80,7 +80,7 @@ pub fn ty_parser() -> impl parse::Parser<ast::Ty> {
     })
 }
 
-pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
+pub fn expr_parser() -> impl helper::Parser<ast::Expr> {
     recursive(|expr| {
         let paren_expr_list: BoxedParser<Option<Vec<SrcNode<ast::Expr>>>> = nested_parser(
             expr.clone()
@@ -171,7 +171,7 @@ pub fn expr_parser() -> impl parse::Parser<ast::Expr> {
     })
 }
 
-pub fn item_parser() -> impl parse::Parser<ast::Item> {
+pub fn item_parser() -> impl helper::Parser<ast::Item> {
     recursive(|item| {
         let init: BoxedParser<ast::Local> = ident_parser()
             .map_with_span(SrcNode::new)
@@ -309,7 +309,7 @@ pub fn item_parser() -> impl parse::Parser<ast::Item> {
     })
 }
 
-pub fn module_parser() -> impl parse::Parser<ast::Module> {
+pub fn module_parser() -> impl helper::Parser<ast::Module> {
     item_parser()
         .map_with_span(|item, span| SrcNode::new(item, span))
         .repeated()
