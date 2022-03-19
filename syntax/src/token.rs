@@ -246,28 +246,49 @@ mod tests {
         };
     }
 
+    macro_rules! S {
+        [$start:literal, $end:literal] => {
+            $crate::span::Span::new($crate::src::SrcId::empty(), $start..$end)
+        };
+    }
+
+    macro_rules! E {
+        (unexpected($t:expr), $span:expr) => {{
+            let kind = $crate::error::ErrorKind::Unexpected($crate::error::Pattern::Token($t));
+            $crate::error::Error::new(kind, $span)
+        }};
+    }
+
     macro_rules! expect_lex {
-        ($code:literal, [$($t:expr),*]) => {
+        ($code:literal, [$($t:expr),*], $lexer_errs: ident) => {
             let code = $code;
             let len = code.chars().count();
 
             let span = |i| $crate::span::Span::new($crate::src::SrcId::empty(), i..i + 1);
-            let tokens = $crate::token::lexer()
-                .parse(chumsky::Stream::from_iter(
+            let (tokens, $lexer_errs) = $crate::token::lexer()
+                .parse_recovery(chumsky::Stream::from_iter(
                     span(len),
                     code.chars().enumerate().map(|(i, c)| (c, span(i))),
-                ))
-                .map(|tokens| tokens.into_iter().map(|(tok, _)| tok).collect::<Vec<_>>());
+                ));
+
+            assert!(tokens.is_some());
+            let tokens = tokens.unwrap();
+            let tokens = tokens.into_iter().map(|(tok, _)| tok).collect::<Vec<_>>();
 
             let expected_tokens = [$($t),*];
-
-            dbg!(&tokens);
-            assert!(tokens.is_ok());
-            let tokens = tokens.unwrap();
-
             assert!(tokens.len() == expected_tokens.len());
-
             assert!(tokens.into_iter().zip(expected_tokens.into_iter()).all(|(t, et)| t == et));
+        };
+        ($code:literal, [$($t:expr),*]) => {
+            expect_lex!($code, [$($t), *], _lexer_errs);
+        };
+        ($code:literal, [$($t:expr),*], [$($e:expr),*]) => {
+            expect_lex!($code, [$($t),*], lexer_errs);
+            dbg!(&lexer_errs);
+
+            let expected_errs = [$($e),*];
+            assert!(lexer_errs.len() == expected_errs.len());
+            assert!(lexer_errs.into_iter().zip(expected_errs.into_iter()).all(|(e, ee)| e == ee));
         };
     }
 
@@ -314,6 +335,18 @@ mod tests {
                 T![Close::Brace],
                 T![Open::Paren],
                 T![Close::Paren]
+            ]
+        );
+    }
+
+    #[test]
+    fn errs() {
+        expect_lex!(
+            "@ + $ -",
+            [T![err('@')], T![+], T![err('$')], T![-]],
+            [
+                E![unexpected(T![err('@')]), S![0, 1]],
+                E![unexpected(T![err('$')]), S![4, 5]]
             ]
         );
     }
