@@ -2,7 +2,7 @@ use std::{fmt, ops};
 
 use crate::span::Span;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Node<T, M> {
     inner: Box<T>,
     meta: M,

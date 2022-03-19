@@ -44,13 +44,13 @@ impl ops::Deref for Ident {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Lit {
     Int(u128),
     Str(Intern<String>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinOp {
     Add,
     Sub,
@@ -60,18 +60,18 @@ pub enum BinOp {
     Rem,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnOp {
     Deref,
     Neg,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Path {
     pub segments: Vec<SrcNode<Ident>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     Lit(SrcNode<Lit>),
     Path(SrcNode<Path>),
@@ -82,47 +82,47 @@ pub enum Expr {
     Error,
 }
 
-#[derive(Debug, Clone)]
-pub struct FieldDef {
-    pub ident: SrcNode<Ident>,
-    pub ty: SrcNode<Ty>,
-}
-
-#[derive(Debug)]
-pub struct Param {
-    pub ident: SrcNode<Ident>,
-    pub ty: SrcNode<Ty>,
-}
-
-#[derive(Debug)]
-pub enum FnRetTy {
-    Default(SrcNode<()>),
-    Ty(SrcNode<Ty>),
-}
-
-#[derive(Debug)]
-pub struct FnSig {
-    pub inputs: SrcNode<Vec<SrcNode<Param>>>,
-    pub output: SrcNode<FnRetTy>,
-}
-
-#[derive(Debug)]
-pub struct Generics {
-    pub params: Vec<SrcNode<Ident>>,
-}
-
-#[derive(Debug)]
-pub struct Block {
-    pub stmts: Vec<Stmt>,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
     Path(SrcNode<Path>),
     Ptr(SrcNode<Self>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDef {
+    pub ident: SrcNode<Ident>,
+    pub ty: SrcNode<Ty>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Param {
+    pub ident: SrcNode<Ident>,
+    pub ty: SrcNode<Ty>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum FnRetTy {
+    Default(SrcNode<()>),
+    Ty(SrcNode<Ty>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FnSig {
+    pub inputs: SrcNode<Vec<SrcNode<Param>>>,
+    pub output: SrcNode<FnRetTy>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Generics {
+    pub params: Vec<SrcNode<Ident>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Block {
+    pub stmts: Vec<Stmt>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ItemKind {
     Struct {
         generics: Option<SrcNode<Generics>>,
@@ -135,32 +135,32 @@ pub enum ItemKind {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Item {
     pub ident: SrcNode<Ident>,
     pub kind: SrcNode<ItemKind>,
 }
 
-#[derive(Debug)]
-pub struct Local {
-    pub ident: SrcNode<Ident>,
-    pub kind: SrcNode<LocalKind>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LocalKind {
     Init(SrcNode<Expr>, Option<SrcNode<Ty>>),
     Decl(SrcNode<Ty>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+pub struct Local {
+    pub ident: SrcNode<Ident>,
+    pub kind: SrcNode<LocalKind>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Stmt {
     Item(SrcNode<Item>),
     Expr(SrcNode<Expr>),
     Local(SrcNode<Local>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Module {
     pub items: Vec<SrcNode<Item>>,
 }
