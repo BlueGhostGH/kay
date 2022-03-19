@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{span::Span, token::Token};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ErrorKind {
     UnexpectedEnd,
     Unexpected(Pattern),
@@ -19,6 +19,15 @@ pub struct Error {
 }
 
 impl Error {
+    pub fn new(kind: ErrorKind, span: Span) -> Self {
+        Self {
+            kind,
+            span,
+            expected: HashSet::new(),
+            label: None,
+        }
+    }
+
     pub fn expected(mut self, pat: Pattern) -> Self {
         self.expected.insert(pat);
         self
@@ -29,6 +38,12 @@ impl Error {
             self.expected.insert(expected);
         }
         self
+    }
+}
+
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.span == other.span && self.label == other.label
     }
 }
 

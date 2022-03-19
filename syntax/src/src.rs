@@ -5,7 +5,7 @@ use std::{
 
 use internment::Intern;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct SrcId {
     inner: Intern<Vec<String>>,
 }
