@@ -1,6 +1,5 @@
 use chumsky::{
     primitive::{choice, end, just},
-    recovery::nested_delimiters,
     recursive::recursive,
     select, Parser,
 };
@@ -9,19 +8,44 @@ use crate::{
     ast,
     error::{Error, Pattern},
     node::SrcNode,
-    span::Span,
     token::{Delimiter, Token},
 };
 
 pub mod helper {
-    use crate::{error, token::Token};
+    use chumsky::{primitive::just, recovery::nested_delimiters};
+
+    use crate::{
+        error,
+        span::Span,
+        token::{Delimiter, Token},
+    };
 
     pub trait Parser<T> = chumsky::Parser<Token, T, Error = error::Error> + Clone;
 
     pub type BoxedParser<'a, T> = chumsky::BoxedParser<'a, Token, T, error::Error>;
+
+    pub fn nested_parser<'a, T, P, F>(parser: P, delimiter: Delimiter, f: F) -> BoxedParser<'a, T>
+    where
+        T: 'a,
+        P: Parser<T> + 'a,
+        F: Fn(Span) -> T + Clone + 'a,
+    {
+        parser
+            .delimited_by(just(Token::Open(delimiter)), just(Token::Close(delimiter)))
+            .recover_with(nested_delimiters(
+                Token::Open(delimiter),
+                Token::Close(delimiter),
+                [(
+                    Token::Open(Delimiter::Paren),
+                    Token::Close(Delimiter::Paren),
+                )],
+                f,
+            ))
+            .boxed()
+    }
 }
 
-use helper::BoxedParser;
+use helper::{nested_parser, BoxedParser};
 
 pub fn ident_parser() -> impl helper::Parser<ast::Ident> {
     select! {
@@ -36,26 +60,6 @@ pub fn lit_parser() -> impl helper::Parser<ast::Lit> {
         Token::Str(r#str) => ast::Lit::Str(r#str),
     }
     .map_err(|e: Error| e.expected(Pattern::Literal))
-}
-
-pub fn nested_parser<'a, T, P, F>(parser: P, delimiter: Delimiter, f: F) -> BoxedParser<'a, T>
-where
-    T: 'a,
-    P: helper::Parser<T> + 'a,
-    F: Fn(Span) -> T + Clone + 'a,
-{
-    parser
-        .delimited_by(just(Token::Open(delimiter)), just(Token::Close(delimiter)))
-        .recover_with(nested_delimiters(
-            Token::Open(delimiter),
-            Token::Close(delimiter),
-            [(
-                Token::Open(Delimiter::Paren),
-                Token::Close(Delimiter::Paren),
-            )],
-            f,
-        ))
-        .boxed()
 }
 
 pub fn path_parser() -> impl helper::Parser<ast::Path> {
@@ -315,4 +319,422 @@ pub fn module_parser() -> impl helper::Parser<ast::Module> {
         .repeated()
         .then_ignore(end())
         .map(|items| ast::Module { items })
+}
+
+#[cfg(test)]
+mod tests {
+    use chumsky::{primitive::end, Parser, Span};
+
+    use crate::{
+        ast,
+        parse::{expr_parser, ident_parser, item_parser, lit_parser, path_parser, ty_parser},
+    };
+
+    macro_rules! SN {
+        [$t:expr, $start:literal, $end:literal] => {{
+            let span = $crate::span::Span::new($crate::src::SrcId::empty(), $start..$end);
+            $crate::node::SrcNode::new($t, span)
+        }};
+    }
+
+    macro_rules! Id {
+        ($id:ident) => {
+            $crate::ast::Ident::new(stringify!($id))
+        };
+        ($id:literal) => {
+            $crate::ast::Ident::new($id)
+        };
+    }
+
+    macro_rules! Lit {
+        ($lit:literal int) => {
+            $crate::ast::Lit::Int($lit)
+        };
+    }
+
+    // TODO: Add unit tests for parse errors
+    macro_rules! expect_parse {
+        ($code:literal, $parser:ident, $ast:expr) => {
+            let code = $code;
+            let len = code.chars().count();
+
+            let span = |i| $crate::span::Span::new($crate::src::SrcId::empty(), i..i + 1);
+            let tokens = $crate::token::lexer()
+                .parse(chumsky::Stream::from_iter(
+                    span(len),
+                    code.chars().enumerate().map(|(i, c)| (c, span(i))),
+                ))
+                .unwrap();
+
+            let ast = $parser()
+                .then_ignore(end())
+                .parse(chumsky::Stream::from_iter(span(len), tokens.into_iter()));
+
+            assert!(ast.is_ok());
+            let ast = ast.unwrap();
+
+            assert_eq!(ast, $ast);
+        };
+    }
+
+    #[test]
+    fn parse_ident() {
+        expect_parse!("num", ident_parser, Id![num]);
+    }
+
+    #[test]
+    fn parse_lit() {
+        expect_parse!("1", lit_parser, Lit![1 int]);
+    }
+
+    #[test]
+    fn parse_path() {
+        expect_parse!(
+            "std::array",
+            path_parser,
+            ast::Path {
+                segments: vec![SN![Id![std], 0, 3], SN![Id![array], 5, 10]]
+            }
+        );
+    }
+
+    #[test]
+    fn parse_ty() {
+        expect_parse!(
+            "T",
+            ty_parser,
+            ast::Ty::Path(SN![
+                ast::Path {
+                    segments: vec![SN![Id![T], 0, 1]]
+                },
+                0,
+                1
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_expr() {
+        expect_parse!(
+            "1 + f(*&2)",
+            expr_parser,
+            ast::Expr::Binary(
+                SN![ast::BinOp::Add, 2, 3],
+                SN![ast::Expr::Lit(SN![Lit![1 int], 0, 1]), 0, 1],
+                SN![
+                    ast::Expr::Call(
+                        SN![
+                            ast::Expr::Path(SN![
+                                ast::Path {
+                                    segments: vec![SN![Id![f], 4, 5]]
+                                },
+                                4,
+                                5
+                            ]),
+                            4,
+                            5
+                        ],
+                        vec![SN![
+                            ast::Expr::Unary(
+                                SN![ast::UnOp::Deref, 6, 7],
+                                SN![
+                                    ast::Expr::Addr(SN![
+                                        ast::Expr::Lit(SN![Lit![2 int], 8, 9]),
+                                        8,
+                                        9
+                                    ]),
+                                    7,
+                                    9
+                                ]
+                            ),
+                            6,
+                            9
+                        ]]
+                    ),
+                    4,
+                    10
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn parse_item() {
+        let unit_struct = ast::Stmt::Item(SN![
+            ast::Item {
+                ident: SN![Id![Unit], 32, 36],
+                kind: SN![
+                    ast::ItemKind::Struct {
+                        generics: None,
+                        fields: None
+                    },
+                    25,
+                    37
+                ]
+            },
+            25,
+            37
+        ]);
+
+        let drop_generics = Some(SN![
+            ast::Generics {
+                params: vec![SN![Id![T], 53, 54]]
+            },
+            52,
+            55
+        ]);
+        let drop_fn_sig = ast::FnSig {
+            inputs: SN![
+                vec![SN![
+                    ast::Param {
+                        ident: SN![Id!["_"], 56, 57],
+                        ty: SN![
+                            ast::Ty::Path(SN![
+                                ast::Path {
+                                    segments: vec![SN![Id![T], 59, 60]]
+                                },
+                                59,
+                                60
+                            ]),
+                            59,
+                            60
+                        ]
+                    },
+                    56,
+                    60
+                ]],
+                55,
+                61
+            ],
+            output: SN![
+                ast::FnRetTy::Ty(SN![
+                    ast::Ty::Path(SN![
+                        ast::Path {
+                            segments: vec![SN![Id![Unit], 65, 69]]
+                        },
+                        65,
+                        69
+                    ]),
+                    65,
+                    69
+                ]),
+                62,
+                69
+            ],
+        };
+        let drop_fn = ast::Stmt::Item(SN![
+            ast::Item {
+                ident: SN![Id![drop], 48, 52],
+                kind: SN![
+                    ast::ItemKind::Func {
+                        generics: drop_generics,
+                        sig: drop_fn_sig,
+                        block: SN![ast::Block { stmts: vec![] }, 70, 72]
+                    },
+                    43,
+                    72
+                ]
+            },
+            43,
+            72
+        ]);
+
+        let slice_fields = Some(SN![
+            vec![
+                SN![
+                    ast::FieldDef {
+                        ident: SN![Id![ptr], 108, 111],
+                        ty: SN![
+                            ast::Ty::Ptr(SN![
+                                ast::Ty::Path(SN![
+                                    ast::Path {
+                                        segments: vec![SN![Id![T], 114, 115]]
+                                    },
+                                    114,
+                                    115
+                                ]),
+                                113,
+                                115
+                            ]),
+                            113,
+                            115
+                        ]
+                    },
+                    108,
+                    115
+                ],
+                SN![
+                    ast::FieldDef {
+                        ident: SN![Id![len], 124, 127],
+                        ty: SN![
+                            ast::Ty::Path(SN![
+                                ast::Path {
+                                    segments: vec![SN![Id![USize], 129, 134]]
+                                },
+                                129,
+                                134
+                            ]),
+                            129,
+                            134
+                        ]
+                    },
+                    124,
+                    134
+                ]
+            ],
+            98,
+            140
+        ]);
+        let slice_struct = ast::Stmt::Item(SN![
+            ast::Item {
+                ident: SN![Id![Slice], 85, 90],
+                kind: SN![
+                    ast::ItemKind::Struct {
+                        generics: Some(SN![
+                            ast::Generics {
+                                params: vec![SN![Id![T], 91, 92]]
+                            },
+                            90,
+                            93
+                        ]),
+                        fields: slice_fields
+                    },
+                    78,
+                    140
+                ]
+            },
+            78,
+            140
+        ]);
+
+        let local_init = ast::Stmt::Local(SN![
+            ast::Local {
+                ident: SN![Id![a], 150, 151],
+                kind: SN![
+                    ast::LocalKind::Init(
+                        SN![ast::Expr::Lit(SN![Lit![1 int], 155, 156]), 155, 156],
+                        None
+                    ),
+                    150,
+                    156
+                ]
+            },
+            150,
+            156
+        ]);
+        let local_init_ty = ast::Stmt::Local(SN![
+            ast::Local {
+                ident: SN![Id![a], 162, 163],
+                kind: SN![
+                    ast::LocalKind::Init(
+                        SN![ast::Expr::Lit(SN![Lit![1 int], 171, 172]), 171, 172],
+                        Some(SN![
+                            ast::Ty::Path(SN![
+                                ast::Path {
+                                    segments: vec![SN![Id![Int], 165, 168]]
+                                },
+                                165,
+                                168
+                            ]),
+                            165,
+                            168
+                        ])
+                    ),
+                    162,
+                    172
+                ]
+            },
+            162,
+            172
+        ]);
+        let local_decl = ast::Stmt::Local(SN![
+            ast::Local {
+                ident: SN![Id![a], 178, 179],
+                kind: SN![
+                    ast::LocalKind::Decl(SN![
+                        ast::Ty::Path(SN![
+                            ast::Path {
+                                segments: vec![SN![Id![Int], 181, 184]]
+                            },
+                            181,
+                            184
+                        ]),
+                        181,
+                        184
+                    ]),
+                    178,
+                    184
+                ]
+            },
+            178,
+            184
+        ]);
+
+        let expr = ast::Stmt::Expr(SN![ast::Expr::Lit(SN![Lit![0 int], 191, 192]), 191, 192]);
+
+        expect_parse!(
+            "func main() -> Int
+{
+    struct Unit;
+
+    func drop<T>(_: T) -> Unit {}
+
+    struct Slice<T>
+    {
+        ptr: *T
+        len: USize
+    }
+    
+    a := 1;
+    a: Int = 1;
+    a: Int;
+
+    0;
+}",
+            item_parser,
+            ast::Item {
+                ident: SN![ast::Ident::new("main"), 5, 9],
+                kind: SN![
+                    ast::ItemKind::Func {
+                        generics: None,
+                        sig: ast::FnSig {
+                            inputs: SN![vec![], 9, 11],
+                            output: SN![
+                                ast::FnRetTy::Ty(SN![
+                                    ast::Ty::Path(SN![
+                                        ast::Path {
+                                            segments: vec![SN![ast::Ident::new("Int"), 15, 18]]
+                                        },
+                                        15,
+                                        18
+                                    ]),
+                                    15,
+                                    18
+                                ]),
+                                12,
+                                18
+                            ]
+                        },
+                        block: SN![
+                            ast::Block {
+                                stmts: vec![
+                                    unit_struct,
+                                    drop_fn,
+                                    slice_struct,
+                                    local_init,
+                                    local_init_ty,
+                                    local_decl,
+                                    expr
+                                ]
+                            },
+                            19,
+                            195
+                        ]
+                    },
+                    0,
+                    195
+                ]
+            }
+        );
+    }
 }
