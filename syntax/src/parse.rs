@@ -281,10 +281,14 @@ pub fn item_parser() -> impl helper::Parser<ast::Item> {
             .boxed();
 
         let ret_ty = just(Token::RArrow)
-            .ignore_then(ty_parser().map_with_span(SrcNode::new))
-            .map(ast::FnRetTy::Ty)
-            .or(just(Token::Semicolon)
-                .map_with_span(|_, span| ast::FnRetTy::Default(SrcNode::new((), span))))
+            .ignore_then(ty_parser())
+            .or_not()
+            .map_with_span(|ty, span| match ty {
+                Some(ty) => ast::FnRetTy::Ty(SrcNode::new(ty, span)),
+                // TODO: Figure out why span is wrong
+                // i.e: 62..61 instead of 61..62
+                None => ast::FnRetTy::Default(SrcNode::new((), span)),
+            })
             .map_with_span(SrcNode::new)
             .boxed();
 
@@ -506,21 +510,7 @@ mod tests {
                 55,
                 61
             ],
-            output: SN![
-                ast::FnRetTy::Ty(SN![
-                    ast::Ty::Path(SN![
-                        ast::Path {
-                            segments: vec![SN![Id![Unit], 65, 69]]
-                        },
-                        65,
-                        69
-                    ]),
-                    65,
-                    69
-                ]),
-                62,
-                69
-            ],
+            output: SN![ast::FnRetTy::Default(SN![(), 62, 61]), 62, 61],
         };
         let drop_fn = ast::Stmt::Item(SN![
             ast::Item {
@@ -529,155 +519,155 @@ mod tests {
                     ast::ItemKind::Func {
                         generics: drop_generics,
                         sig: drop_fn_sig,
-                        block: SN![ast::Block { stmts: vec![] }, 70, 72]
+                        block: SN![ast::Block { stmts: vec![] }, 62, 64]
                     },
                     43,
-                    72
+                    64
                 ]
             },
             43,
-            72
+            64
         ]);
 
         let slice_fields = Some(SN![
             vec![
                 SN![
                     ast::FieldDef {
-                        ident: SN![Id![ptr], 108, 111],
+                        ident: SN![Id![ptr], 100, 103],
                         ty: SN![
                             ast::Ty::Ptr(SN![
                                 ast::Ty::Path(SN![
                                     ast::Path {
-                                        segments: vec![SN![Id![T], 114, 115]]
+                                        segments: vec![SN![Id![T], 106, 107]]
                                     },
-                                    114,
-                                    115
+                                    106,
+                                    107
                                 ]),
-                                113,
-                                115
+                                105,
+                                107
                             ]),
-                            113,
-                            115
+                            105,
+                            107
                         ]
                     },
-                    108,
-                    115
+                    100,
+                    107
                 ],
                 SN![
                     ast::FieldDef {
-                        ident: SN![Id![len], 124, 127],
+                        ident: SN![Id![len], 116, 119],
                         ty: SN![
                             ast::Ty::Path(SN![
                                 ast::Path {
-                                    segments: vec![SN![Id![USize], 129, 134]]
+                                    segments: vec![SN![Id![USize], 121, 126]]
                                 },
-                                129,
-                                134
+                                121,
+                                126
                             ]),
-                            129,
-                            134
+                            121,
+                            126
                         ]
                     },
-                    124,
-                    134
+                    116,
+                    126
                 ]
             ],
-            98,
-            140
+            90,
+            132
         ]);
         let slice_struct = ast::Stmt::Item(SN![
             ast::Item {
-                ident: SN![Id![Slice], 85, 90],
+                ident: SN![Id![Slice], 77, 82],
                 kind: SN![
                     ast::ItemKind::Struct {
                         generics: Some(SN![
                             ast::Generics {
-                                params: vec![SN![Id![T], 91, 92]]
+                                params: vec![SN![Id![T], 83, 84]]
                             },
-                            90,
-                            93
+                            82,
+                            85
                         ]),
                         fields: slice_fields
                     },
-                    78,
-                    140
+                    70,
+                    132
                 ]
             },
-            78,
-            140
+            70,
+            132
         ]);
 
         let local_init = ast::Stmt::Local(SN![
             ast::Local {
-                ident: SN![Id![a], 150, 151],
+                ident: SN![Id![a], 142, 143],
                 kind: SN![
                     ast::LocalKind::Init(
-                        SN![ast::Expr::Lit(SN![Lit![1 int], 155, 156]), 155, 156],
+                        SN![ast::Expr::Lit(SN![Lit![1 int], 147, 148]), 147, 148],
                         None
                     ),
-                    150,
-                    156
+                    142,
+                    148
                 ]
             },
-            150,
-            156
+            142,
+            148
         ]);
         let local_init_ty = ast::Stmt::Local(SN![
             ast::Local {
-                ident: SN![Id![a], 162, 163],
+                ident: SN![Id![a], 154, 155],
                 kind: SN![
                     ast::LocalKind::Init(
-                        SN![ast::Expr::Lit(SN![Lit![1 int], 171, 172]), 171, 172],
+                        SN![ast::Expr::Lit(SN![Lit![1 int], 163, 164]), 163, 164],
                         Some(SN![
                             ast::Ty::Path(SN![
                                 ast::Path {
-                                    segments: vec![SN![Id![Int], 165, 168]]
+                                    segments: vec![SN![Id![Int], 157, 160]]
                                 },
-                                165,
-                                168
+                                157,
+                                160
                             ]),
-                            165,
-                            168
+                            157,
+                            160
                         ])
                     ),
-                    162,
-                    172
+                    154,
+                    164
                 ]
             },
-            162,
-            172
+            154,
+            164
         ]);
         let local_decl = ast::Stmt::Local(SN![
             ast::Local {
-                ident: SN![Id![a], 178, 179],
+                ident: SN![Id![a], 170, 171],
                 kind: SN![
                     ast::LocalKind::Decl(SN![
                         ast::Ty::Path(SN![
                             ast::Path {
-                                segments: vec![SN![Id![Int], 181, 184]]
+                                segments: vec![SN![Id![Int], 173, 176]]
                             },
-                            181,
-                            184
+                            173,
+                            176
                         ]),
-                        181,
-                        184
+                        173,
+                        176
                     ]),
-                    178,
-                    184
+                    170,
+                    176
                 ]
             },
-            178,
-            184
+            170,
+            176
         ]);
 
-        let expr = ast::Stmt::Expr(SN![ast::Expr::Lit(SN![Lit![0 int], 191, 192]), 191, 192]);
+        let expr = ast::Stmt::Expr(SN![ast::Expr::Lit(SN![Lit![0 int], 183, 184]), 183, 184]);
 
         expect_parse!(
             "func main() -> Int
 {
     struct Unit;
 
-    func drop<T>(_: T) -> Unit {}
+    func drop<T>(_: T) {}
 
     struct Slice<T>
     {
@@ -708,7 +698,7 @@ mod tests {
                                         15,
                                         18
                                     ]),
-                                    15,
+                                    12,
                                     18
                                 ]),
                                 12,
@@ -728,11 +718,11 @@ mod tests {
                                 ]
                             },
                             19,
-                            195
+                            187
                         ]
                     },
                     0,
-                    195
+                    187
                 ]
             }
         );
