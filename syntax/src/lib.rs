@@ -1,17 +1,16 @@
 #![feature(string_remove_matches, trait_alias)]
 
-mod ast;
-mod error;
-mod node;
-mod parse;
-mod span;
-mod src;
-mod token;
+pub mod ast;
+pub mod error;
+pub mod node;
+pub mod parse;
+pub mod span;
+pub mod src;
+pub mod token;
 
 use chumsky::{Parser, Span, Stream};
 
-pub use src::SrcId;
-use {error::Error, node::SrcNode};
+use {error::Error, node::SrcNode, src::SrcId};
 
 fn parse<T, P>(parser: P, code: &str, src: SrcId) -> (Option<T>, Vec<Error>)
 where

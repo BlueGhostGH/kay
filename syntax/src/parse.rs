@@ -175,6 +175,8 @@ pub fn expr_parser() -> impl helper::Parser<ast::Expr> {
     })
 }
 
+// TODO: move out parsers for specific item/stmt kinds into
+// their own functions for cleaner unit testing.
 pub fn item_parser() -> impl helper::Parser<ast::Item> {
     recursive(|item| {
         let init: BoxedParser<ast::Local> = ident_parser()
@@ -256,7 +258,8 @@ pub fn item_parser() -> impl helper::Parser<ast::Item> {
             .then(generics.clone())
             .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
             .map_with_span(|((ident, generics), fields), span| {
-                let kind = ast::ItemKind::Struct { generics, fields };
+                let r#struct = ast::Struct { generics, fields };
+                let kind = ast::ItemKind::Struct(r#struct);
 
                 ast::Item {
                     ident,
@@ -468,10 +471,10 @@ mod tests {
             ast::Item {
                 ident: SN![Id![Unit], 32, 36],
                 kind: SN![
-                    ast::ItemKind::Struct {
+                    ast::ItemKind::Struct(ast::Struct {
                         generics: None,
                         fields: None
-                    },
+                    }),
                     25,
                     37
                 ]
@@ -579,7 +582,7 @@ mod tests {
             ast::Item {
                 ident: SN![Id![Slice], 77, 82],
                 kind: SN![
-                    ast::ItemKind::Struct {
+                    ast::ItemKind::Struct(ast::Struct {
                         generics: Some(SN![
                             ast::Generics {
                                 params: vec![SN![Id![T], 83, 84]]
@@ -588,7 +591,7 @@ mod tests {
                             85
                         ]),
                         fields: slice_fields
-                    },
+                    }),
                     70,
                     132
                 ]

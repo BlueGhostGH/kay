@@ -110,6 +110,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kay_analysis"
+version = "0.1.0"
+dependencies = [
+ "kay_syntax",
+]
+
+[[package]]
 name = "kay_syntax"
 version = "0.1.0"
 dependencies = [

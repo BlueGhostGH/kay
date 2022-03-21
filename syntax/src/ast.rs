@@ -123,11 +123,14 @@ pub struct Block {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct Struct {
+    pub generics: Option<SrcNode<Generics>>,
+    pub fields: Option<SrcNode<Vec<SrcNode<FieldDef>>>>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ItemKind {
-    Struct {
-        generics: Option<SrcNode<Generics>>,
-        fields: Option<SrcNode<Vec<SrcNode<FieldDef>>>>,
-    },
+    Struct(Struct),
     Func {
         generics: Option<SrcNode<Generics>>,
         sig: FnSig,
@@ -163,4 +166,13 @@ pub enum Stmt {
 #[derive(Debug, PartialEq)]
 pub struct Module {
     pub items: Vec<SrcNode<Item>>,
+}
+
+impl Module {
+    pub fn structs(&self) -> impl Iterator<Item = &Struct> + '_ {
+        self.items.iter().filter_map(|item| match &*item.kind {
+            ItemKind::Struct(r#struct) => Some(r#struct),
+            _ => None,
+        })
+    }
 }

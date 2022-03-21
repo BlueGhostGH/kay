@@ -1,0 +1,7 @@
+[package]
+name = "kay_analysis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kay_syntax = { path = "../syntax" }
