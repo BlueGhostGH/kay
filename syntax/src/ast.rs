@@ -169,9 +169,9 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn structs(&self) -> impl Iterator<Item = &Struct> + '_ {
+    pub fn structs(&self) -> impl Iterator<Item = (&Struct, &SrcNode<Ident>)> + '_ {
         self.items.iter().filter_map(|item| match &*item.kind {
-            ItemKind::Struct(r#struct) => Some(r#struct),
+            ItemKind::Struct(r#struct) => Some((r#struct, &item.ident)),
             _ => None,
         })
     }
