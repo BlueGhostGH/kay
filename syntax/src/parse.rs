@@ -303,11 +303,12 @@ pub fn item_parser() -> impl helper::Parser<ast::Item> {
             .then(block)
             .map_with_span(|((((ident, generics), inputs), output), block), span| {
                 let sig = ast::FnSig { inputs, output };
-                let kind = ast::ItemKind::Func {
+                let func = ast::Func {
                     generics,
                     sig,
                     block,
                 };
+                let kind = ast::ItemKind::Func(func);
 
                 ast::Item {
                     ident,
@@ -519,11 +520,11 @@ mod tests {
             ast::Item {
                 ident: SN![Id![drop], 48, 52],
                 kind: SN![
-                    ast::ItemKind::Func {
+                    ast::ItemKind::Func(ast::Func {
                         generics: drop_generics,
                         sig: drop_fn_sig,
                         block: SN![ast::Block { stmts: vec![] }, 62, 64]
-                    },
+                    }),
                     43,
                     64
                 ]
@@ -688,7 +689,7 @@ mod tests {
             ast::Item {
                 ident: SN![ast::Ident::new("main"), 5, 9],
                 kind: SN![
-                    ast::ItemKind::Func {
+                    ast::ItemKind::Func(ast::Func {
                         generics: None,
                         sig: ast::FnSig {
                             inputs: SN![vec![], 9, 11],
@@ -723,7 +724,7 @@ mod tests {
                             19,
                             187
                         ]
-                    },
+                    }),
                     0,
                     187
                 ]

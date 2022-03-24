@@ -129,13 +129,16 @@ pub struct Struct {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct Func {
+    pub generics: Option<SrcNode<Generics>>,
+    pub sig: FnSig,
+    pub block: SrcNode<Block>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ItemKind {
     Struct(Struct),
-    Func {
-        generics: Option<SrcNode<Generics>>,
-        sig: FnSig,
-        block: SrcNode<Block>,
-    },
+    Func(Func),
 }
 
 #[derive(Debug, PartialEq)]
@@ -172,6 +175,13 @@ impl Module {
     pub fn structs(&self) -> impl Iterator<Item = (&Struct, &SrcNode<Ident>)> + '_ {
         self.items.iter().filter_map(|item| match &*item.kind {
             ItemKind::Struct(r#struct) => Some((r#struct, &item.ident)),
+            _ => None,
+        })
+    }
+
+    pub fn funcs(&self) -> impl Iterator<Item = (&Func, &SrcNode<Ident>)> + '_ {
+        self.items.iter().filter_map(|item| match &*item.kind {
+            ItemKind::Func(func) => Some((func, &item.ident)),
             _ => None,
         })
     }
