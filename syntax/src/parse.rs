@@ -1,5 +1,6 @@
 use chumsky::{
     primitive::{choice, end, just},
+    recovery::nested_delimiters,
     recursive::recursive,
     select, Parser,
 };
@@ -8,70 +9,65 @@ use crate::{
     ast,
     error::{Error, Pattern},
     node::SrcNode,
+    span::Span,
     token::{Delimiter, Token},
 };
 
 pub mod helper {
-    use chumsky::{primitive::just, recovery::nested_delimiters};
+    use crate::{error, token::Token};
 
-    use crate::{
-        error,
-        span::Span,
-        token::{Delimiter, Token},
-    };
-
-    pub trait Parser<T> = chumsky::Parser<Token, T, Error = error::Error> + Clone;
-
-    pub type BoxedParser<'a, T> = chumsky::BoxedParser<'a, Token, T, error::Error>;
-
-    pub fn nested_parser<'a, T, P, F>(parser: P, delimiter: Delimiter, f: F) -> BoxedParser<'a, T>
-    where
-        T: 'a,
-        P: Parser<T> + 'a,
-        F: Fn(Span) -> T + Clone + 'a,
-    {
-        parser
-            .delimited_by(just(Token::Open(delimiter)), just(Token::Close(delimiter)))
-            .recover_with(nested_delimiters(
-                Token::Open(delimiter),
-                Token::Close(delimiter),
-                [(
-                    Token::Open(Delimiter::Paren),
-                    Token::Close(Delimiter::Paren),
-                )],
-                f,
-            ))
-            .boxed()
-    }
+    pub trait Parser<T> = chumsky::Parser<Token, T, Error = error::Error>;
 }
 
-use helper::{nested_parser, BoxedParser};
+pub type BParser<T> = chumsky::BoxedParser<'static, Token, T, Error>;
 
-pub fn ident_parser() -> impl helper::Parser<ast::Ident> {
+pub fn nested_parser<T, F>(parser: BParser<T>, delimiter: Delimiter, f: F) -> BParser<T>
+where
+    T: 'static,
+    F: Fn(Span) -> T + Clone + 'static,
+{
+    parser
+        .delimited_by(just(Token::Open(delimiter)), just(Token::Close(delimiter)))
+        .recover_with(nested_delimiters(
+            Token::Open(delimiter),
+            Token::Close(delimiter),
+            [(
+                Token::Open(Delimiter::Paren),
+                Token::Close(Delimiter::Paren),
+            )],
+            f,
+        ))
+        .boxed()
+}
+
+pub fn ident_parser() -> BParser<ast::Ident> {
     select! {
         Token::Ident(id) => id,
     }
     .map_err(|e: Error| e.expected(Pattern::Ident))
+    .boxed()
 }
 
-pub fn lit_parser() -> impl helper::Parser<ast::Lit> {
+pub fn lit_parser() -> BParser<ast::Lit> {
     select! {
         Token::Int(int) => ast::Lit::Int(int),
         Token::Str(r#str) => ast::Lit::Str(r#str),
     }
     .map_err(|e: Error| e.expected(Pattern::Literal))
+    .boxed()
 }
 
-pub fn path_parser() -> impl helper::Parser<ast::Path> {
+pub fn path_parser() -> BParser<ast::Path> {
     ident_parser()
         .map_with_span(SrcNode::new)
         .separated_by(just([Token::Colon, Token::Colon]))
         .at_least(1)
         .allow_leading()
         .map(|segments| ast::Path { segments })
+        .boxed()
 }
 
-pub fn ty_parser() -> impl helper::Parser<ast::Ty> {
+pub fn ty_parser() -> BParser<ast::Ty> {
     recursive(|ty| {
         let path =
             path_parser().map_with_span(|path, span| ast::Ty::Path(SrcNode::new(path, span)));
@@ -82,16 +78,18 @@ pub fn ty_parser() -> impl helper::Parser<ast::Ty> {
 
         path.or(ptr)
     })
+    .boxed()
 }
 
-pub fn expr_parser() -> impl helper::Parser<ast::Expr> {
+pub fn expr_parser() -> BParser<ast::Expr> {
     recursive(|expr| {
-        let paren_expr_list: BoxedParser<Option<Vec<SrcNode<ast::Expr>>>> = nested_parser(
+        let paren_expr_list = nested_parser(
             expr.clone()
                 .map_with_span(SrcNode::new)
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
-                .map(Some),
+                .map(Some)
+                .boxed(),
             Delimiter::Paren,
             |_| None,
         );
@@ -100,7 +98,7 @@ pub fn expr_parser() -> impl helper::Parser<ast::Expr> {
         let path =
             path_parser().map_with_span(|path, span| ast::Expr::Path(SrcNode::new(path, span)));
 
-        let atom: BoxedParser<SrcNode<ast::Expr>> = lit
+        let atom = lit
             .or(path)
             .or(select! { Token::Error(_) => () }
                 .map(|_| ast::Expr::Error)
@@ -108,11 +106,14 @@ pub fn expr_parser() -> impl helper::Parser<ast::Expr> {
             .map_with_span(SrcNode::new)
             .boxed();
 
-        let call: BoxedParser<SrcNode<ast::Expr>> = atom
+        let call = atom
             .then(paren_expr_list.or_not())
             .map_with_span(|(expr, args), span| match args {
                 Some(Some(args)) => {
-                    let span = args.iter().fold(span, |span, arg| span.union(arg.span()));
+                    let span = args
+                        .iter()
+                        .map(|expr: &SrcNode<ast::Expr>| expr.span())
+                        .fold(span, |acc, cur| acc.union(cur));
 
                     SrcNode::new(ast::Expr::Call(expr, args), span)
                 }
@@ -173,13 +174,14 @@ pub fn expr_parser() -> impl helper::Parser<ast::Expr> {
 
         sum.map(SrcNode::into_inner)
     })
+    .boxed()
 }
 
 // TODO: move out parsers for specific item/stmt kinds into
 // their own functions for cleaner unit testing.
-pub fn item_parser() -> impl helper::Parser<ast::Item> {
+pub fn item_parser() -> BParser<ast::Item> {
     recursive(|item| {
-        let init: BoxedParser<ast::Local> = ident_parser()
+        let init = ident_parser()
             .map_with_span(SrcNode::new)
             .then_ignore(just(Token::Colon))
             .then(ty_parser().map_with_span(SrcNode::new).or_not())
@@ -210,13 +212,14 @@ pub fn item_parser() -> impl helper::Parser<ast::Item> {
         let local = init.or(decl).boxed();
 
         let stmt = choice((
-            item.map_with_span(|item, span| ast::Stmt::Item(SrcNode::new(item, span))),
+            item.map_with_span(SrcNode::new).map(ast::Stmt::Item),
             expr_parser()
                 .map_with_span(SrcNode::new)
                 .map(ast::Stmt::Expr)
                 .then_ignore(just(Token::Semicolon)),
             local
-                .map_with_span(|local, span| ast::Stmt::Local(SrcNode::new(local, span)))
+                .map_with_span(SrcNode::new)
+                .map(ast::Stmt::Local)
                 .then_ignore(just(Token::Semicolon)),
         ))
         .boxed();
@@ -230,7 +233,7 @@ pub fn item_parser() -> impl helper::Parser<ast::Item> {
             .map_with_span(|stmts, span| SrcNode::new(ast::Block { stmts }, span))
             .boxed();
 
-        let generics: BoxedParser<Option<SrcNode<ast::Generics>>> = ident_parser()
+        let generics = ident_parser()
             .map_with_span(SrcNode::new)
             .separated_by(just(Token::Comma))
             .delimited_by(just(Token::Lt), just(Token::Gt))
@@ -319,14 +322,16 @@ pub fn item_parser() -> impl helper::Parser<ast::Item> {
 
         r#struct.or(func)
     })
+    .boxed()
 }
 
-pub fn module_parser() -> impl helper::Parser<ast::Module> {
+pub fn module_parser() -> BParser<ast::Module> {
     item_parser()
         .map_with_span(|item, span| SrcNode::new(item, span))
         .repeated()
         .then_ignore(end())
         .map(|items| ast::Module { items })
+        .boxed()
 }
 
 #[cfg(test)]
