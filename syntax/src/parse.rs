@@ -177,47 +177,50 @@ pub fn expr_parser() -> BParser<ast::Expr> {
     .boxed()
 }
 
+pub fn local_parser() -> BParser<ast::Local> {
+    let init = ident_parser()
+        .map_with_span(SrcNode::new)
+        .then_ignore(just(Token::Colon))
+        .then(ty_parser().map_with_span(SrcNode::new).or_not())
+        .then_ignore(just(Token::Eq))
+        .then(expr_parser().map_with_span(SrcNode::new))
+        .map_with_span(|((ident, ty), expr), span| {
+            let kind = ast::LocalKind::Init(expr, ty);
+
+            ast::Local {
+                ident,
+                kind: SrcNode::new(kind, span),
+            }
+        })
+        .boxed();
+    let decl = ident_parser()
+        .map_with_span(SrcNode::new)
+        .then_ignore(just(Token::Colon))
+        .then(ty_parser().map_with_span(SrcNode::new))
+        .map_with_span(|(ident, ty), span| {
+            let kind = ast::LocalKind::Decl(ty);
+
+            ast::Local {
+                ident,
+                kind: SrcNode::new(kind, span),
+            }
+        })
+        .boxed();
+
+    init.or(decl).boxed()
+}
+
 // TODO: move out parsers for specific item/stmt kinds into
 // their own functions for cleaner unit testing.
 pub fn item_parser() -> BParser<ast::Item> {
     recursive(|item| {
-        let init = ident_parser()
-            .map_with_span(SrcNode::new)
-            .then_ignore(just(Token::Colon))
-            .then(ty_parser().map_with_span(SrcNode::new).or_not())
-            .then_ignore(just(Token::Eq))
-            .then(expr_parser().map_with_span(SrcNode::new))
-            .map_with_span(|((ident, ty), expr), span| {
-                let kind = ast::LocalKind::Init(expr, ty);
-
-                ast::Local {
-                    ident,
-                    kind: SrcNode::new(kind, span),
-                }
-            })
-            .boxed();
-        let decl = ident_parser()
-            .map_with_span(SrcNode::new)
-            .then_ignore(just(Token::Colon))
-            .then(ty_parser().map_with_span(SrcNode::new))
-            .map_with_span(|(ident, ty), span| {
-                let kind = ast::LocalKind::Decl(ty);
-
-                ast::Local {
-                    ident,
-                    kind: SrcNode::new(kind, span),
-                }
-            })
-            .boxed();
-        let local = init.or(decl).boxed();
-
         let stmt = choice((
             item.map_with_span(SrcNode::new).map(ast::Stmt::Item),
             expr_parser()
                 .map_with_span(SrcNode::new)
                 .map(ast::Stmt::Expr)
                 .then_ignore(just(Token::Semicolon)),
-            local
+            local_parser()
                 .map_with_span(SrcNode::new)
                 .map(ast::Stmt::Local)
                 .then_ignore(just(Token::Semicolon)),
@@ -340,7 +343,10 @@ mod tests {
 
     use crate::{
         ast,
-        parse::{expr_parser, ident_parser, item_parser, lit_parser, path_parser, ty_parser},
+        parse::{
+            expr_parser, ident_parser, item_parser, lit_parser, local_parser, path_parser,
+            ty_parser,
+        },
     };
 
     macro_rules! SN {
@@ -469,6 +475,69 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn parse_local() {
+        expect_parse!(
+            "a := 1",
+            local_parser,
+            ast::Local {
+                ident: SN![Id![a], 0, 1],
+                kind: SN![
+                    ast::LocalKind::Init(SN![ast::Expr::Lit(SN![Lit![1 int], 5, 6]), 5, 6], None),
+                    0,
+                    6
+                ]
+            }
+        ); // Init, inferred
+        expect_parse!(
+            "a: Int = 1",
+            local_parser,
+            ast::Local {
+                ident: SN![Id![a], 0, 1],
+                kind: SN![
+                    ast::LocalKind::Init(
+                        SN![ast::Expr::Lit(SN![Lit![1 int], 9, 10]), 9, 10],
+                        Some(SN![
+                            ast::Ty::Path(SN![
+                                ast::Path {
+                                    segments: vec![SN![Id![Int], 3, 6]]
+                                },
+                                3,
+                                6
+                            ]),
+                            3,
+                            6
+                        ])
+                    ),
+                    0,
+                    10
+                ]
+            }
+        ); // Init, explicit
+        expect_parse!(
+            "a: Int",
+            local_parser,
+            ast::Local {
+                ident: SN![Id![a], 0, 1],
+                kind: SN![
+                    ast::LocalKind::Decl(SN![
+                        ast::Ty::Path(SN![
+                            ast::Path {
+                                segments: vec![SN![Id![Int], 3, 6]]
+                            },
+                            3,
+                            6
+                        ]),
+                        3,
+                        6
+                    ]),
+                    0,
+                    6
+                ]
+            }
+        ); // Decl
     }
 
     #[test]

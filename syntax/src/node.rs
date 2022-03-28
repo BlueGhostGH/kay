@@ -71,6 +71,6 @@ pub type SrcNode<T> = Node<T, Span>;
 
 impl<T> SrcNode<T> {
     pub fn span(&self) -> Span {
-        self.meta.clone()
+        self.meta
     }
 }
