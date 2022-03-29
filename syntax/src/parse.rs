@@ -210,6 +210,16 @@ pub fn local_parser() -> BParser<ast::Local> {
     init.or(decl).boxed()
 }
 
+pub fn generics_parser() -> BParser<Option<SrcNode<ast::Generics>>> {
+    ident_parser()
+        .map_with_span(SrcNode::new)
+        .separated_by(just(Token::Comma))
+        .delimited_by(just(Token::Lt), just(Token::Gt))
+        .map_with_span(|params, span| SrcNode::new(ast::Generics { params }, span))
+        .or_not()
+        .boxed()
+}
+
 // TODO: move out parsers for specific item/stmt kinds into
 // their own functions for cleaner unit testing.
 pub fn item_parser() -> BParser<ast::Item> {
@@ -236,14 +246,6 @@ pub fn item_parser() -> BParser<ast::Item> {
             .map_with_span(|stmts, span| SrcNode::new(ast::Block { stmts }, span))
             .boxed();
 
-        let generics = ident_parser()
-            .map_with_span(SrcNode::new)
-            .separated_by(just(Token::Comma))
-            .delimited_by(just(Token::Lt), just(Token::Gt))
-            .map_with_span(|params, span| SrcNode::new(ast::Generics { params }, span))
-            .or_not()
-            .boxed();
-
         let field = ident_parser()
             .map_with_span(SrcNode::new)
             .then_ignore(just(Token::Colon))
@@ -261,7 +263,7 @@ pub fn item_parser() -> BParser<ast::Item> {
 
         let r#struct = just(Token::Struct)
             .ignore_then(ident_parser().map_with_span(SrcNode::new))
-            .then(generics.clone())
+            .then(generics_parser())
             .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
             .map_with_span(|((ident, generics), fields), span| {
                 let r#struct = ast::Struct { generics, fields };
@@ -303,7 +305,7 @@ pub fn item_parser() -> BParser<ast::Item> {
 
         let func = just(Token::Func)
             .ignore_then(ident_parser().map_with_span(SrcNode::new))
-            .then(generics.clone())
+            .then(generics_parser())
             .then(params)
             .then(ret_ty)
             .then(block)
@@ -344,8 +346,8 @@ mod tests {
     use crate::{
         ast,
         parse::{
-            expr_parser, ident_parser, item_parser, lit_parser, local_parser, path_parser,
-            ty_parser,
+            expr_parser, generics_parser, ident_parser, item_parser, lit_parser, local_parser,
+            path_parser, ty_parser,
         },
     };
 
@@ -538,6 +540,21 @@ mod tests {
                 ]
             }
         ); // Decl
+    }
+
+    #[test]
+    fn parse_generics() {
+        expect_parse!(
+            "<T, F>",
+            generics_parser,
+            Some(SN![
+                ast::Generics {
+                    params: vec![SN![Id![T], 1, 2], SN![Id![F], 4, 5]]
+                },
+                0,
+                6
+            ])
+        );
     }
 
     #[test]
