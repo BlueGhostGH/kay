@@ -220,6 +220,38 @@ pub fn generics_parser() -> BParser<Option<SrcNode<ast::Generics>>> {
         .boxed()
 }
 
+pub fn struct_parser() -> BParser<ast::Item> {
+    let field = ident_parser()
+        .map_with_span(SrcNode::new)
+        .then_ignore(just(Token::Colon))
+        .then(ty_parser().map_with_span(SrcNode::new))
+        .map_with_span(|(ident, ty), span| SrcNode::new(ast::FieldDef { ident, ty }, span))
+        .boxed();
+    let fields = field
+        .repeated()
+        .delimited_by(
+            just(Token::Open(Delimiter::Brace)),
+            just(Token::Close(Delimiter::Brace)),
+        )
+        .map_with_span(SrcNode::new)
+        .boxed();
+
+    just(Token::Struct)
+        .ignore_then(ident_parser().map_with_span(SrcNode::new))
+        .then(generics_parser())
+        .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
+        .map_with_span(|((ident, generics), fields), span| {
+            let r#struct = ast::Struct { generics, fields };
+            let kind = ast::ItemKind::Struct(r#struct);
+
+            ast::Item {
+                ident,
+                kind: SrcNode::new(kind, span),
+            }
+        })
+        .boxed()
+}
+
 // TODO: move out parsers for specific item/stmt kinds into
 // their own functions for cleaner unit testing.
 pub fn item_parser() -> BParser<ast::Item> {
@@ -244,36 +276,6 @@ pub fn item_parser() -> BParser<ast::Item> {
                 just(Token::Close(Delimiter::Brace)),
             )
             .map_with_span(|stmts, span| SrcNode::new(ast::Block { stmts }, span))
-            .boxed();
-
-        let field = ident_parser()
-            .map_with_span(SrcNode::new)
-            .then_ignore(just(Token::Colon))
-            .then(ty_parser().map_with_span(SrcNode::new))
-            .map_with_span(|(ident, ty), span| SrcNode::new(ast::FieldDef { ident, ty }, span))
-            .boxed();
-        let fields = field
-            .repeated()
-            .delimited_by(
-                just(Token::Open(Delimiter::Brace)),
-                just(Token::Close(Delimiter::Brace)),
-            )
-            .map_with_span(SrcNode::new)
-            .boxed();
-
-        let r#struct = just(Token::Struct)
-            .ignore_then(ident_parser().map_with_span(SrcNode::new))
-            .then(generics_parser())
-            .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
-            .map_with_span(|((ident, generics), fields), span| {
-                let r#struct = ast::Struct { generics, fields };
-                let kind = ast::ItemKind::Struct(r#struct);
-
-                ast::Item {
-                    ident,
-                    kind: SrcNode::new(kind, span),
-                }
-            })
             .boxed();
 
         let param = ident_parser()
@@ -325,7 +327,7 @@ pub fn item_parser() -> BParser<ast::Item> {
             })
             .boxed();
 
-        r#struct.or(func)
+        struct_parser().or(func)
     })
     .boxed()
 }
@@ -555,6 +557,7 @@ mod tests {
                 6
             ])
         );
+        expect_parse!("", generics_parser, None);
     }
 
     #[test]
