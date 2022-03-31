@@ -252,8 +252,66 @@ pub fn struct_parser() -> BParser<ast::Item> {
         .boxed()
 }
 
-// TODO: move out parsers for specific item/stmt kinds into
-// their own functions for cleaner unit testing.
+fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Item> {
+    let block = stmt
+        .repeated()
+        .delimited_by(
+            just(Token::Open(Delimiter::Brace)),
+            just(Token::Close(Delimiter::Brace)),
+        )
+        .map_with_span(|stmts, span| SrcNode::new(ast::Block { stmts }, span))
+        .boxed();
+
+    let param = ident_parser()
+        .map_with_span(SrcNode::new)
+        .then_ignore(just(Token::Colon))
+        .then(ty_parser().map_with_span(SrcNode::new))
+        .map_with_span(|(ident, ty), span| SrcNode::new(ast::Param { ident, ty }, span))
+        .boxed();
+    let params = param
+        .separated_by(just(Token::Comma))
+        .delimited_by(
+            just(Token::Open(Delimiter::Paren)),
+            just(Token::Close(Delimiter::Paren)),
+        )
+        .map_with_span(SrcNode::new)
+        .boxed();
+
+    let ret_ty = just(Token::RArrow)
+        .ignore_then(ty_parser())
+        .or_not()
+        .map_with_span(|ty, span| match ty {
+            Some(ty) => ast::FnRetTy::Ty(SrcNode::new(ty, span)),
+            // TODO: Figure out why span is wrong
+            // i.e: 62..61 instead of 61..62
+            None => ast::FnRetTy::Default(SrcNode::new((), span)),
+        })
+        .map_with_span(SrcNode::new)
+        .boxed();
+
+    just(Token::Func)
+        .ignore_then(ident_parser().map_with_span(SrcNode::new))
+        .then(generics_parser())
+        .then(params)
+        .then(ret_ty)
+        .then(block)
+        .map_with_span(|((((ident, generics), inputs), output), block), span| {
+            let sig = ast::FnSig { inputs, output };
+            let func = ast::Func {
+                generics,
+                sig,
+                block,
+            };
+            let kind = ast::ItemKind::Func(func);
+
+            ast::Item {
+                ident,
+                kind: SrcNode::new(kind, span),
+            }
+        })
+        .boxed()
+}
+
 pub fn item_parser() -> BParser<ast::Item> {
     recursive(|item| {
         let stmt = choice((
@@ -269,65 +327,7 @@ pub fn item_parser() -> BParser<ast::Item> {
         ))
         .boxed();
 
-        let block = stmt
-            .repeated()
-            .delimited_by(
-                just(Token::Open(Delimiter::Brace)),
-                just(Token::Close(Delimiter::Brace)),
-            )
-            .map_with_span(|stmts, span| SrcNode::new(ast::Block { stmts }, span))
-            .boxed();
-
-        let param = ident_parser()
-            .map_with_span(SrcNode::new)
-            .then_ignore(just(Token::Colon))
-            .then(ty_parser().map_with_span(SrcNode::new))
-            .map_with_span(|(ident, ty), span| SrcNode::new(ast::Param { ident, ty }, span))
-            .boxed();
-        let params = param
-            .separated_by(just(Token::Comma))
-            .delimited_by(
-                just(Token::Open(Delimiter::Paren)),
-                just(Token::Close(Delimiter::Paren)),
-            )
-            .map_with_span(SrcNode::new)
-            .boxed();
-
-        let ret_ty = just(Token::RArrow)
-            .ignore_then(ty_parser())
-            .or_not()
-            .map_with_span(|ty, span| match ty {
-                Some(ty) => ast::FnRetTy::Ty(SrcNode::new(ty, span)),
-                // TODO: Figure out why span is wrong
-                // i.e: 62..61 instead of 61..62
-                None => ast::FnRetTy::Default(SrcNode::new((), span)),
-            })
-            .map_with_span(SrcNode::new)
-            .boxed();
-
-        let func = just(Token::Func)
-            .ignore_then(ident_parser().map_with_span(SrcNode::new))
-            .then(generics_parser())
-            .then(params)
-            .then(ret_ty)
-            .then(block)
-            .map_with_span(|((((ident, generics), inputs), output), block), span| {
-                let sig = ast::FnSig { inputs, output };
-                let func = ast::Func {
-                    generics,
-                    sig,
-                    block,
-                };
-                let kind = ast::ItemKind::Func(func);
-
-                ast::Item {
-                    ident,
-                    kind: SrcNode::new(kind, span),
-                }
-            })
-            .boxed();
-
-        struct_parser().or(func)
+        struct_parser().or(func_parser(stmt))
     })
     .boxed()
 }
