@@ -114,8 +114,9 @@ pub fn expr_parser() -> BParser<ast::Expr> {
                         .iter()
                         .map(|expr: &SrcNode<ast::Expr>| expr.span())
                         .fold(span, |acc, cur| acc.union(cur));
+                    let call = ast::Expr::Call { callee: expr, args };
 
-                    SrcNode::new(ast::Expr::Call(expr, args), span)
+                    SrcNode::new(call, span)
                 }
                 Some(None) => SrcNode::new(ast::Expr::Error, span),
                 None => expr,
@@ -139,9 +140,9 @@ pub fn expr_parser() -> BParser<ast::Expr> {
         let unary = op
             .repeated()
             .then(addr)
-            .foldr(|op, expr| {
-                let span = op.span().union(expr.span());
-                SrcNode::new(ast::Expr::Unary(op, expr), span)
+            .foldr(|op, operand| {
+                let span = op.span().union(operand.span());
+                SrcNode::new(ast::Expr::Unary { op, operand }, span)
             })
             .boxed();
 
@@ -153,9 +154,9 @@ pub fn expr_parser() -> BParser<ast::Expr> {
         let product = unary
             .clone()
             .then(op.then(unary).repeated())
-            .foldl(|a, (op, b)| {
-                let span = a.span().union(b.span());
-                SrcNode::new(ast::Expr::Binary(op, a, b), span)
+            .foldl(|lhs, (op, rhs)| {
+                let span = lhs.span().union(rhs.span());
+                SrcNode::new(ast::Expr::Binary { op, lhs, rhs }, span)
             })
             .boxed();
 
@@ -166,9 +167,9 @@ pub fn expr_parser() -> BParser<ast::Expr> {
         let sum = product
             .clone()
             .then(op.then(product).repeated())
-            .foldl(|a, (op, b)| {
-                let span = a.span().union(b.span());
-                SrcNode::new(ast::Expr::Binary(op, a, b), span)
+            .foldl(|lhs, (op, rhs)| {
+                let span = lhs.span().union(rhs.span());
+                SrcNode::new(ast::Expr::Binary { op, lhs, rhs }, span)
             })
             .boxed();
 
@@ -220,12 +221,12 @@ pub fn generics_parser() -> BParser<Option<SrcNode<ast::Generics>>> {
         .boxed()
 }
 
-pub fn struct_parser() -> BParser<ast::Item> {
+pub fn struct_parser() -> BParser<ast::Struct> {
     let field = ident_parser()
         .map_with_span(SrcNode::new)
         .then_ignore(just(Token::Colon))
         .then(ty_parser().map_with_span(SrcNode::new))
-        .map_with_span(|(ident, ty), span| SrcNode::new(ast::FieldDef { ident, ty }, span))
+        .map_with_span(|(ident, ty), span| SrcNode::new(ast::StructFieldDef { ident, ty }, span))
         .boxed();
     let fields = field
         .repeated()
@@ -240,19 +241,15 @@ pub fn struct_parser() -> BParser<ast::Item> {
         .ignore_then(ident_parser().map_with_span(SrcNode::new))
         .then(generics_parser())
         .then(fields.map(Some).or(just(Token::Semicolon).to(None)))
-        .map_with_span(|((ident, generics), fields), span| {
-            let r#struct = ast::Struct { generics, fields };
-            let kind = ast::ItemKind::Struct(r#struct);
-
-            ast::Item {
-                ident,
-                kind: SrcNode::new(kind, span),
-            }
+        .map(|((ident, generics), fields)| ast::Struct {
+            ident,
+            generics,
+            fields,
         })
         .boxed()
 }
 
-fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Item> {
+fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Func> {
     let block = stmt
         .repeated()
         .delimited_by(
@@ -266,7 +263,7 @@ fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Item> {
         .map_with_span(SrcNode::new)
         .then_ignore(just(Token::Colon))
         .then(ty_parser().map_with_span(SrcNode::new))
-        .map_with_span(|(ident, ty), span| SrcNode::new(ast::Param { ident, ty }, span))
+        .map_with_span(|(ident, ty), span| SrcNode::new(ast::FnParam { ident, ty }, span))
         .boxed();
     let params = param
         .separated_by(just(Token::Comma))
@@ -284,7 +281,7 @@ fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Item> {
             Some(ty) => ast::FnRetTy::Ty(SrcNode::new(ty, span)),
             // TODO: Figure out why span is wrong
             // i.e: 62..61 instead of 61..62
-            None => ast::FnRetTy::Default(SrcNode::new((), span)),
+            None => ast::FnRetTy::Default(span),
         })
         .map_with_span(SrcNode::new)
         .boxed();
@@ -295,18 +292,14 @@ fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Item> {
         .then(params)
         .then(ret_ty)
         .then(block)
-        .map_with_span(|((((ident, generics), inputs), output), block), span| {
+        .map(|((((ident, generics), inputs), output), block)| {
             let sig = ast::FnSig { inputs, output };
-            let func = ast::Func {
+
+            ast::Func {
+                ident,
                 generics,
                 sig,
                 block,
-            };
-            let kind = ast::ItemKind::Func(func);
-
-            ast::Item {
-                ident,
-                kind: SrcNode::new(kind, span),
             }
         })
         .boxed()
@@ -327,7 +320,14 @@ pub fn item_parser() -> BParser<ast::Item> {
         ))
         .boxed();
 
-        struct_parser().or(func_parser(stmt))
+        choice((
+            struct_parser()
+                .map_with_span(SrcNode::new)
+                .map(ast::Item::Struct),
+            func_parser(stmt)
+                .map_with_span(SrcNode::new)
+                .map(ast::Item::Func),
+        ))
     })
     .boxed()
 }
@@ -353,10 +353,15 @@ mod tests {
         },
     };
 
+    macro_rules! Span {
+        [$start:literal, $end:literal] => {
+            $crate::span::Span::new($crate::src::SrcId::empty(), $start..$end)
+        };
+    }
+
     macro_rules! SN {
         [$t:expr, $start:literal, $end:literal] => {{
-            let span = $crate::span::Span::new($crate::src::SrcId::empty(), $start..$end);
-            $crate::node::SrcNode::new($t, span)
+            $crate::node::SrcNode::new($t, Span![$start, $end])
         }};
     }
 
@@ -441,12 +446,12 @@ mod tests {
         expect_parse!(
             "1 + f(*&2)",
             expr_parser,
-            ast::Expr::Binary(
-                SN![ast::BinOp::Add, 2, 3],
-                SN![ast::Expr::Lit(SN![Lit![1 int], 0, 1]), 0, 1],
-                SN![
-                    ast::Expr::Call(
-                        SN![
+            ast::Expr::Binary {
+                op: SN![ast::BinOp::Add, 2, 3],
+                lhs: SN![ast::Expr::Lit(SN![Lit![1 int], 0, 1]), 0, 1],
+                rhs: SN![
+                    ast::Expr::Call {
+                        callee: SN![
                             ast::Expr::Path(SN![
                                 ast::Path {
                                     segments: vec![SN![Id![f], 4, 5]]
@@ -457,10 +462,10 @@ mod tests {
                             4,
                             5
                         ],
-                        vec![SN![
-                            ast::Expr::Unary(
-                                SN![ast::UnOp::Deref, 6, 7],
-                                SN![
+                        args: vec![SN![
+                            ast::Expr::Unary {
+                                op: SN![ast::UnOp::Deref, 6, 7],
+                                operand: SN![
                                     ast::Expr::Addr(SN![
                                         ast::Expr::Lit(SN![Lit![2 int], 8, 9]),
                                         8,
@@ -469,15 +474,15 @@ mod tests {
                                     7,
                                     9
                                 ]
-                            ),
+                            },
                             6,
                             9
                         ]]
-                    ),
+                    },
                     4,
                     10
                 ]
-            )
+            }
         );
     }
 
@@ -563,17 +568,15 @@ mod tests {
     #[test]
     fn parse_item() {
         let unit_struct = ast::Stmt::Item(SN![
-            ast::Item {
-                ident: SN![Id![Unit], 32, 36],
-                kind: SN![
-                    ast::ItemKind::Struct(ast::Struct {
-                        generics: None,
-                        fields: None
-                    }),
-                    25,
-                    37
-                ]
-            },
+            ast::Item::Struct(SN![
+                ast::Struct {
+                    ident: SN![Id![Unit], 32, 36],
+                    generics: None,
+                    fields: None,
+                },
+                25,
+                37
+            ]),
             25,
             37
         ]);
@@ -588,7 +591,7 @@ mod tests {
         let drop_fn_sig = ast::FnSig {
             inputs: SN![
                 vec![SN![
-                    ast::Param {
+                    ast::FnParam {
                         ident: SN![Id!["_"], 56, 57],
                         ty: SN![
                             ast::Ty::Path(SN![
@@ -608,21 +611,19 @@ mod tests {
                 55,
                 61
             ],
-            output: SN![ast::FnRetTy::Default(SN![(), 62, 61]), 62, 61],
+            output: SN![ast::FnRetTy::Default(Span![62, 61]), 62, 61],
         };
         let drop_fn = ast::Stmt::Item(SN![
-            ast::Item {
-                ident: SN![Id![drop], 48, 52],
-                kind: SN![
-                    ast::ItemKind::Func(ast::Func {
-                        generics: drop_generics,
-                        sig: drop_fn_sig,
-                        block: SN![ast::Block { stmts: vec![] }, 62, 64]
-                    }),
-                    43,
-                    64
-                ]
-            },
+            ast::Item::Func(SN![
+                ast::Func {
+                    ident: SN![Id![drop], 48, 52],
+                    generics: drop_generics,
+                    sig: drop_fn_sig,
+                    block: SN![ast::Block { stmts: vec![] }, 62, 64],
+                },
+                43,
+                64
+            ]),
             43,
             64
         ]);
@@ -630,7 +631,7 @@ mod tests {
         let slice_fields = Some(SN![
             vec![
                 SN![
-                    ast::FieldDef {
+                    ast::StructFieldDef {
                         ident: SN![Id![ptr], 100, 103],
                         ty: SN![
                             ast::Ty::Ptr(SN![
@@ -652,7 +653,7 @@ mod tests {
                     107
                 ],
                 SN![
-                    ast::FieldDef {
+                    ast::StructFieldDef {
                         ident: SN![Id![len], 116, 119],
                         ty: SN![
                             ast::Ty::Path(SN![
@@ -674,23 +675,21 @@ mod tests {
             132
         ]);
         let slice_struct = ast::Stmt::Item(SN![
-            ast::Item {
-                ident: SN![Id![Slice], 77, 82],
-                kind: SN![
-                    ast::ItemKind::Struct(ast::Struct {
-                        generics: Some(SN![
-                            ast::Generics {
-                                params: vec![SN![Id![T], 83, 84]]
-                            },
-                            82,
-                            85
-                        ]),
-                        fields: slice_fields
-                    }),
-                    70,
-                    132
-                ]
-            },
+            ast::Item::Struct(SN![
+                ast::Struct {
+                    ident: SN![Id![Slice], 77, 82],
+                    generics: Some(SN![
+                        ast::Generics {
+                            params: vec![SN![Id![T], 83, 84]]
+                        },
+                        82,
+                        85
+                    ]),
+                    fields: slice_fields
+                },
+                70,
+                132
+            ]),
             70,
             132
         ]);
@@ -780,49 +779,47 @@ mod tests {
     0;
 }",
             item_parser,
-            ast::Item {
-                ident: SN![ast::Ident::new("main"), 5, 9],
-                kind: SN![
-                    ast::ItemKind::Func(ast::Func {
-                        generics: None,
-                        sig: ast::FnSig {
-                            inputs: SN![vec![], 9, 11],
-                            output: SN![
-                                ast::FnRetTy::Ty(SN![
-                                    ast::Ty::Path(SN![
-                                        ast::Path {
-                                            segments: vec![SN![ast::Ident::new("Int"), 15, 18]]
-                                        },
-                                        15,
-                                        18
-                                    ]),
-                                    12,
+            ast::Item::Func(SN![
+                ast::Func {
+                    ident: SN![ast::Ident::new("main"), 5, 9],
+                    generics: None,
+                    sig: ast::FnSig {
+                        inputs: SN![vec![], 9, 11],
+                        output: SN![
+                            ast::FnRetTy::Ty(SN![
+                                ast::Ty::Path(SN![
+                                    ast::Path {
+                                        segments: vec![SN![ast::Ident::new("Int"), 15, 18]]
+                                    },
+                                    15,
                                     18
                                 ]),
                                 12,
                                 18
+                            ]),
+                            12,
+                            18
+                        ]
+                    },
+                    block: SN![
+                        ast::Block {
+                            stmts: vec![
+                                unit_struct,
+                                drop_fn,
+                                slice_struct,
+                                local_init,
+                                local_init_ty,
+                                local_decl,
+                                expr
                             ]
                         },
-                        block: SN![
-                            ast::Block {
-                                stmts: vec![
-                                    unit_struct,
-                                    drop_fn,
-                                    slice_struct,
-                                    local_init,
-                                    local_init_ty,
-                                    local_decl,
-                                    expr
-                                ]
-                            },
-                            19,
-                            187
-                        ]
-                    }),
-                    0,
-                    187
-                ]
-            }
+                        19,
+                        187
+                    ]
+                },
+                0,
+                187
+            ])
         );
     }
 }

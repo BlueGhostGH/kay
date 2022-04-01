@@ -1,8 +1,11 @@
-use std::{fmt, ops};
+use std::{
+    fmt,
+    ops::{self},
+};
 
 use internment::Intern;
 
-use crate::node::SrcNode;
+use crate::{node::SrcNode, span::Span};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ident {
@@ -75,10 +78,20 @@ pub struct Path {
 pub enum Expr {
     Lit(SrcNode<Lit>),
     Path(SrcNode<Path>),
-    Call(SrcNode<Self>, Vec<SrcNode<Self>>),
     Addr(SrcNode<Self>),
-    Unary(SrcNode<UnOp>, SrcNode<Self>),
-    Binary(SrcNode<BinOp>, SrcNode<Self>, SrcNode<Self>),
+    Call {
+        callee: SrcNode<Self>,
+        args: Vec<SrcNode<Self>>,
+    },
+    Unary {
+        op: SrcNode<UnOp>,
+        operand: SrcNode<Self>,
+    },
+    Binary {
+        op: SrcNode<BinOp>,
+        lhs: SrcNode<Self>,
+        rhs: SrcNode<Self>,
+    },
     Error,
 }
 
@@ -89,26 +102,26 @@ pub enum Ty {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FieldDef {
+pub struct StructFieldDef {
     pub ident: SrcNode<Ident>,
     pub ty: SrcNode<Ty>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Param {
+pub struct FnParam {
     pub ident: SrcNode<Ident>,
     pub ty: SrcNode<Ty>,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum FnRetTy {
-    Default(SrcNode<()>),
+    Default(Span),
     Ty(SrcNode<Ty>),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct FnSig {
-    pub inputs: SrcNode<Vec<SrcNode<Param>>>,
+    pub inputs: SrcNode<Vec<SrcNode<FnParam>>>,
     pub output: SrcNode<FnRetTy>,
 }
 
@@ -124,27 +137,23 @@ pub struct Block {
 
 #[derive(Debug, PartialEq)]
 pub struct Struct {
+    pub ident: SrcNode<Ident>,
     pub generics: Option<SrcNode<Generics>>,
-    pub fields: Option<SrcNode<Vec<SrcNode<FieldDef>>>>,
+    pub fields: Option<SrcNode<Vec<SrcNode<StructFieldDef>>>>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Func {
+    pub ident: SrcNode<Ident>,
     pub generics: Option<SrcNode<Generics>>,
     pub sig: FnSig,
     pub block: SrcNode<Block>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ItemKind {
-    Struct(Struct),
-    Func(Func),
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Item {
-    pub ident: SrcNode<Ident>,
-    pub kind: SrcNode<ItemKind>,
+pub enum Item {
+    Struct(SrcNode<Struct>),
+    Func(SrcNode<Func>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -172,16 +181,16 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn structs(&self) -> impl Iterator<Item = (&Struct, &SrcNode<Ident>)> + '_ {
-        self.items.iter().filter_map(|item| match &*item.kind {
-            ItemKind::Struct(r#struct) => Some((r#struct, &item.ident)),
+    pub fn structs(&self) -> impl Iterator<Item = &Struct> + '_ {
+        self.items.iter().filter_map(|item| match &**item {
+            Item::Struct(r#struct) => Some(&**r#struct),
             _ => None,
         })
     }
 
-    pub fn funcs(&self) -> impl Iterator<Item = (&Func, &SrcNode<Ident>)> + '_ {
-        self.items.iter().filter_map(|item| match &*item.kind {
-            ItemKind::Func(func) => Some((func, &item.ident)),
+    pub fn funcs(&self) -> impl Iterator<Item = &Func> + '_ {
+        self.items.iter().filter_map(|item| match &**item {
+            Item::Func(func) => Some(&**func),
             _ => None,
         })
     }
