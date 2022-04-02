@@ -40,7 +40,7 @@ impl chumsky::Span for Span {
     }
 
     fn context(&self) -> Self::Context {
-        self.context.clone()
+        self.context
     }
     fn start(&self) -> Self::Offset {
         self.range.0

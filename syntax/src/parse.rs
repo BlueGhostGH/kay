@@ -2,14 +2,14 @@ use chumsky::{
     primitive::{choice, end, just},
     recovery::nested_delimiters,
     recursive::recursive,
-    select, Parser,
+    select, Parser, Span,
 };
 
 use crate::{
     ast,
     error::{Error, Pattern},
     node::SrcNode,
-    span::Span,
+    span,
     token::{Delimiter, Token},
 };
 
@@ -24,7 +24,7 @@ pub type BParser<T> = chumsky::BoxedParser<'static, Token, T, Error>;
 pub fn nested_parser<T, F>(parser: BParser<T>, delimiter: Delimiter, f: F) -> BParser<T>
 where
     T: 'static,
-    F: Fn(Span) -> T + Clone + 'static,
+    F: Fn(span::Span) -> T + Clone + 'static,
 {
     parser
         .delimited_by(just(Token::Open(delimiter)), just(Token::Close(delimiter)))
@@ -276,14 +276,9 @@ fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Func> {
 
     let ret_ty = just(Token::RArrow)
         .ignore_then(ty_parser())
-        .or_not()
-        .map_with_span(|ty, span| match ty {
-            Some(ty) => ast::FnRetTy::Ty(SrcNode::new(ty, span)),
-            // TODO: Figure out why span is wrong
-            // i.e: 62..61 instead of 61..62
-            None => ast::FnRetTy::Default(span),
-        })
+        .map_with_span(|ty, span| ast::FnRetTy::Ty(SrcNode::new(ty, span)))
         .map_with_span(SrcNode::new)
+        .or_not()
         .boxed();
 
     just(Token::Func)
@@ -293,6 +288,18 @@ fn func_parser(stmt: BParser<ast::Stmt>) -> BParser<ast::Func> {
         .then(ret_ty)
         .then(block)
         .map(|((((ident, generics), inputs), output), block)| {
+            let output = {
+                if let Some(output) = output {
+                    output
+                } else {
+                    let span = span::Span::new(
+                        block.span().context(),
+                        block.span().start()..block.span().start(),
+                    );
+
+                    SrcNode::new(ast::FnRetTy::Default(span), span)
+                }
+            };
             let sig = ast::FnSig { inputs, output };
 
             ast::Func {
