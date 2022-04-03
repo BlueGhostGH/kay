@@ -1,5 +1,6 @@
 use std::{env, fs};
 
+use kay_analysis::lower;
 use kay_syntax::{parse_module, src::SrcId};
 
 use kay::Error;
@@ -14,8 +15,13 @@ fn try_main() -> Result<(), Error> {
 
     let (ast, syntax_errors) = parse_module(&code, src);
 
-    dbg!(ast);
     dbg!(syntax_errors);
+
+    if let Some(ast) = ast {
+        let hir = lower(ast.into_inner());
+
+        dbg!(hir);
+    }
 
     Ok(())
 }

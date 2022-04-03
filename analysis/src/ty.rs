@@ -1,79 +1,64 @@
-use std::collections::{BTreeMap, HashMap};
+use std::fmt;
 
-use kay_syntax::{ast, node::SrcNode, span::Span};
+use kay_syntax::ast;
 
-use crate::error::Error;
+use crate::r#struct::StructId;
 
-#[derive(Debug)]
-pub enum Prim {
-    Int,
-    Str,
+#[derive(Clone, Copy)]
+pub struct Ty {
+    pub ptr_depth: usize,
+    pub kind: TypeKind,
 }
 
-#[derive(Debug)]
-pub enum Ty {
-    Prim(Prim),
-    Struct(BTreeMap<ast::Ident, TyId>),
-    Gen(usize, GenScopeId),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct TyId(usize);
-
-#[derive(Debug, Default)]
-pub struct Types {
-    tys: Vec<(Span, Ty)>,
-    scopes: Vec<GenScope>,
-}
-
-impl Types {
-    pub fn insert_gen_scope(&mut self, gen_scope: GenScope) -> GenScopeId {
-        let id = GenScopeId(self.scopes.len());
-        self.scopes.push(gen_scope);
-        id
+impl fmt::Debug for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{:?}", "&".repeat(self.ptr_depth), self.kind)
     }
 }
 
-#[derive(Debug)]
-pub struct GenTy {
-    pub name: SrcNode<ast::Ident>,
-}
+impl From<&ast::Ty> for Ty {
+    fn from(mut ty: &ast::Ty) -> Self {
+        let mut this = Self {
+            ptr_depth: 0,
+            kind: TypeKind::Any,
+        };
 
-#[derive(Debug, Clone, Copy)]
-pub struct GenScopeId(usize);
+        loop {
+            match ty {
+                ast::Ty::Ptr(inner) => {
+                    this.ptr_depth += 1;
+                    ty = &*inner;
+                }
+                ast::Ty::Path(path) => {
+                    // We know there is at least a segment part
+                    let segment = &path.segments[0];
 
-#[derive(Debug)]
-pub struct GenScope {
-    pub span: Span,
-    types: Vec<GenTy>,
-}
+                    this.kind = match segment.as_ref() {
+                        "I32" => TypeKind::Primitive(Primitive::I32),
+                        "Str" => TypeKind::Primitive(Primitive::Str),
+                        "Any" => TypeKind::Any,
+                        _ => todo!("Implement struct types"),
+                    };
 
-impl GenScope {
-    pub fn from_ast(generics: &SrcNode<ast::Generics>) -> (Self, Vec<Error>) {
-        let mut existing = HashMap::new();
-        let mut errors = Vec::new();
-
-        for gen_ty in generics.params.iter() {
-            if let Some(old_span) = existing.insert(gen_ty.inner, gen_ty.span()) {
-                errors.push(Error::DuplicateGenName {
-                    name: gen_ty.inner().clone(),
-                    old_span,
-                    span: gen_ty.span(),
-                });
+                    break;
+                }
             }
         }
 
-        let scope = Self {
-            span: generics.span(),
-            types: generics
-                .params
-                .iter()
-                .map(|ident| GenTy {
-                    name: ident.clone(),
-                })
-                .collect(),
-        };
-
-        (scope, errors)
+        this
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TypeKind {
+    Primitive(Primitive),
+    Struct(StructId),
+    Any,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Primitive {
+    Str,
+
+    I32,
 }

@@ -1,43 +1,71 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use kay_syntax::{ast, node::SrcNode, span::Span};
+use kay_syntax::ast;
 
-use crate::{error::Error, ty::GenScopeId};
-
-#[derive(Debug)]
-pub struct Struct {
-    pub name: SrcNode<ast::Ident>,
-    pub gen_scope: Option<GenScopeId>,
-}
+use crate::ty::Ty;
 
 #[derive(Debug, Clone, Copy)]
 pub struct StructId(usize);
 
-#[derive(Debug, Default)]
-pub struct Structs {
-    name_lut: HashMap<ast::Ident, (Span, StructId, Option<GenScopeId>)>,
-    structs: Vec<(Span, Option<Struct>)>,
+#[derive(Debug)]
+pub struct StructIndex {
+    structs: Vec<Struct>,
 }
 
-impl Structs {
-    pub fn declare_struct(
-        &mut self,
-        name: SrcNode<ast::Ident>,
-        gen_scope: Option<GenScopeId>,
-    ) -> Result<StructId, Error> {
-        let id = StructId(self.structs.len());
-        if let Err(old) = self
-            .name_lut
-            .try_insert(*name, (name.span(), id, gen_scope))
-        {
-            Err(Error::DuplicateTypeName {
-                name: *name,
-                old_span: old.entry.get().0,
-                span: name.span(),
-            })
-        } else {
-            self.structs.push((name.span(), None));
-            Ok(id)
+impl StructIndex {
+    pub fn new() -> Self {
+        Self {
+            structs: Vec::new(),
         }
     }
+
+    pub fn define_struct(&mut self, r#struct: ast::Struct) {
+        let ast::Struct {
+            ident,
+            fields,
+            generics,
+        } = r#struct;
+
+        let ident = *ident;
+        let generics = generics
+            .map(|generics| generics.params.iter().map(|p| **p).collect())
+            .unwrap_or_default();
+        let fields = fields
+            .map(|fields| {
+                fields
+                    .iter()
+                    .map(|field| {
+                        let ast::StructFieldDef { ident, ty } = &**field;
+                        let ident = **ident;
+                        let ty = Ty::from(&**ty);
+
+                        (ident, ty)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        self.structs.push(Struct {
+            ident,
+            fields,
+            generics,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct Struct {
+    pub ident: ast::Ident,
+    pub fields: HashMap<ast::Ident, Ty>,
+    pub generics: HashSet<ast::Ident>,
+}
+
+pub fn define_structs(structs: Vec<ast::Struct>) -> StructIndex {
+    let mut index = StructIndex {
+        structs: Vec::new(),
+    };
+
+    for r#struct in structs {}
+
+    index
 }

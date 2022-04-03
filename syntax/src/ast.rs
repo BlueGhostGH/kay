@@ -1,7 +1,4 @@
-use std::{
-    fmt,
-    ops::{self},
-};
+use std::{fmt, ops};
 
 use internment::Intern;
 
